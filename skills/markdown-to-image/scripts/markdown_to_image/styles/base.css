@@ -1,0 +1,441 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 1080px;
+  height: 1440px;
+  overflow: hidden;
+}
+
+body {
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background: #faf7f2;
+  color: #2c2c2c;
+}
+
+.slide {
+  width: 1080px;
+  height: 1440px;
+  padding: 72px 80px 100px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.slide-header {
+  font-size: 26px;
+  color: #8a7f72;
+  letter-spacing: 0.04em;
+  margin-bottom: 48px;
+}
+
+.slide-footer {
+  position: absolute;
+  left: 80px;
+  right: 80px;
+  bottom: 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 24px;
+  color: #a89f94;
+  z-index: 2;
+}
+
+.slide-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding-bottom: 48px;
+}
+
+.title-xl {
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: 72px;
+  line-height: 1.15;
+  font-weight: 700;
+  color: #1f1f1f;
+  margin-bottom: 24px;
+}
+
+.title-lg {
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: 56px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: #1f1f1f;
+  margin-bottom: 20px;
+}
+
+.title-md {
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: 44px;
+  line-height: 1.25;
+  font-weight: 700;
+  color: #1f1f1f;
+  margin-bottom: 32px;
+}
+
+.subtitle {
+  font-size: 32px;
+  line-height: 1.5;
+  color: #5c5348;
+  margin-bottom: 16px;
+}
+
+.lead {
+  font-size: 36px;
+  line-height: 1.55;
+  color: #4a433c;
+}
+
+.accent {
+  color: #c45c4a;
+}
+
+.stat-row {
+  display: flex;
+  gap: 24px;
+  margin-top: 48px;
+}
+
+.stat-card {
+  flex: 1;
+  background: #fff;
+  border: 1px solid #e8e0d4;
+  border-radius: 20px;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.stat-value {
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 56px;
+  font-weight: 700;
+  color: #c45c4a;
+  line-height: 1.1;
+}
+
+.stat-label {
+  margin-top: 12px;
+  font-size: 26px;
+  color: #7a7168;
+}
+
+.hook-box {
+  margin-top: auto;
+  margin-bottom: 16px;
+  padding: 36px 40px;
+  background: #fff;
+  border-left: 6px solid #c45c4a;
+  border-radius: 12px;
+  font-size: 34px;
+  line-height: 1.5;
+  color: #4a433c;
+}
+
+.book-list-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.book-list-header-compact {
+  margin-bottom: 16px;
+}
+
+.book-list-header-compact .book-list-title {
+  font-size: 34px;
+}
+
+.book-list-header-compact .book-list-count {
+  font-size: 24px;
+}
+
+.book-section + .book-section {
+  margin-top: 32px;
+  padding-top: 28px;
+  border-top: 1px solid #e8e0d4;
+}
+
+.book-slide-dense .book-section + .book-section {
+  margin-top: 24px;
+  padding-top: 20px;
+}
+
+.book-slide-dense .book-list-header-compact {
+  margin-bottom: 12px;
+}
+
+.book-slide-dense .book-list-header-compact .book-list-title {
+  font-size: 32px;
+}
+
+.book-slide-dense .book-grid-dense .book-chip {
+  font-size: 22px;
+  padding: 7px 12px;
+  max-width: 300px;
+}
+
+.book-grid-dense {
+  gap: 10px;
+}
+
+.book-grid-dense .book-chip {
+  font-size: 24px;
+  padding: 8px 14px;
+  max-width: 320px;
+}
+
+.book-list-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.book-list-title {
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: 40px;
+  font-weight: 700;
+  color: #1f1f1f;
+  flex: 1;
+}
+
+.book-list-count {
+  font-size: 28px;
+  color: #8a7f72;
+}
+
+.book-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-content: flex-start;
+}
+
+.book-chip {
+  display: inline-block;
+  max-width: 340px;
+  font-size: 26px;
+  line-height: 1.35;
+  padding: 10px 16px;
+  background: #fff;
+  border: 1px solid #e8e0d4;
+  border-radius: 10px;
+  color: #4a433c;
+  white-space: normal;
+  word-break: break-word;
+  vertical-align: top;
+}
+
+.book-page-label {
+  font-size: 26px;
+  color: #8a7f72;
+  margin-bottom: 20px;
+}
+
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  margin-top: 8px;
+}
+
+.info-card {
+  background: #fff;
+  border: 1px solid #e8e0d4;
+  border-radius: 20px;
+  padding: 32px 36px;
+}
+
+.info-card-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #c45c4a;
+  margin-bottom: 12px;
+}
+
+.info-card-desc {
+  font-size: 30px;
+  line-height: 1.5;
+  color: #4a433c;
+}
+
+.section-label {
+  font-size: 28px;
+  color: #8a7f72;
+  margin-bottom: 24px;
+}
+
+.chart-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chart-caption {
+  margin-top: 24px;
+  font-size: 30px;
+  line-height: 1.5;
+  color: #5c5348;
+  text-align: center;
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 32px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 28px;
+  color: #4a433c;
+}
+
+.legend-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-value {
+  margin-left: auto;
+  font-weight: 600;
+  color: #2c2c2c;
+}
+
+.scene-list {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-top: 16px;
+}
+
+.scene-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  background: #fff;
+  border: 1px solid #e8e0d4;
+  border-radius: 16px;
+  padding: 28px 32px;
+  font-size: 30px;
+  line-height: 1.45;
+  color: #4a433c;
+}
+
+.scene-num {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #c45c4a;
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  margin-top: 16px;
+}
+
+.rule-item {
+  font-size: 30px;
+  line-height: 1.55;
+  color: #4a433c;
+  padding-left: 28px;
+  position: relative;
+}
+
+.rule-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #c45c4a;
+}
+
+.cta-box {
+  margin-top: auto;
+  text-align: center;
+  padding: 40px;
+  background: linear-gradient(135deg, #c45c4a 0%, #d4786a 100%);
+  border-radius: 24px;
+  color: #fff;
+}
+
+.cta-title {
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 40px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.cta-desc {
+  font-size: 28px;
+  line-height: 1.5;
+  opacity: 0.95;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+}
+
+.col-card {
+  background: #fff;
+  border: 1px solid #e8e0d4;
+  border-radius: 20px;
+  padding: 32px 28px;
+}
+
+.col-card h3 {
+  font-size: 30px;
+  color: #c45c4a;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.col-card .card-list {
+  gap: 20px;
+}
+
+.col-card .info-card {
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+.col-card .info-card-title {
+  font-size: 26px;
+  color: #2c2c2c;
+  margin-bottom: 8px;
+}
+
+.col-card .info-card-desc {
+  font-size: 24px;
+  color: #6b635a;
+}

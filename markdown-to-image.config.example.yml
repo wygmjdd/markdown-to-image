@@ -1,0 +1,31 @@
+# Copy this file to markdown-to-image.config.yml in your article project.
+#
+# The renderer looks for config in this order:
+# 1. the manifest directory
+# 2. parent directories of the manifest directory
+# 3. manifest.project_root
+# 4. the current working directory
+#
+# Optional, useful when manifests live in an output directory outside the
+# Markdown source project:
+# project_root: /absolute/path/to/source/repo
+
+nickname: 我要改名叫嘟嘟
+bio: 一个用文字分享生活和读书感悟的程序员
+chars_per_slide: 340
+default_cta: reading
+
+cta_mapping:
+  reading:
+    - reading
+    - yue-du-shu-mu
+    - du-shu
+    - shu-zhong-jin-ju-fen-xiang
+  summary:
+    - summary
+    - zong-jie
+  life:
+    - life
+    - sheng-huo-ri-ji
+    - 30-fen-zhong-ri-ji
+    - qin-mi-guan-xi

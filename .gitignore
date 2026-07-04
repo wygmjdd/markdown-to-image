@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# markdown-to-image generated output
+markdown-to-image-output/
+skills/markdown-to-image/examples/*.png
+.agents/
+skills-lock.json

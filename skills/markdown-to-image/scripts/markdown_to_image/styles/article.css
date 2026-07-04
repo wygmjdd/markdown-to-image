@@ -1,0 +1,377 @@
+/* Article series — companion to base.css (both inlined by article.py) */
+
+/* --- Reading-diary palette (warm paper, restrained accent) --- */
+:root {
+  --paper-bg: #f3ede4;
+  --paper-surface: #fffcf7;
+  --ink-primary: #2a2622;
+  --ink-body: #3d3832;
+  --ink-muted: #8a8178;
+  --accent: #a65a3a;
+  --accent-soft: rgba(166, 90, 58, 0.14);
+  --rule: rgba(42, 38, 34, 0.1);
+  --shadow-warm: rgba(120, 86, 58, 0.1);
+  --quote-surface: rgba(166, 90, 58, 0.075);
+  --quote-rule: rgba(166, 90, 58, 0.34);
+  --quote-ink: #332c27;
+  --radius-frame: 20px;
+  --radius-card: 16px;
+}
+
+/* Cover + end: light paper card, not heavy glass */
+.glass-card {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  background: rgba(255, 252, 247, 0.92);
+  box-shadow: 0 12px 40px var(--shadow-warm);
+}
+
+/* --- Shared slide shell --- */
+.slide.slide-article,
+.slide.slide-cover,
+.slide.slide-end {
+  padding: 32px 36px 56px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.slide-article .slide-footer {
+  position: absolute;
+  left: 36px;
+  right: 36px;
+  bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 22px;
+  color: var(--ink-muted);
+  letter-spacing: 0.02em;
+  z-index: 2;
+}
+
+/* --- Body slides --- */
+.slide.slide-article {
+  background: var(--paper-bg);
+}
+
+.slide-article .slide-header {
+  display: none;
+}
+
+.slide-article .slide-body,
+.slide-cover .slide-body,
+.slide-end .slide-body {
+  padding-bottom: 0;
+}
+
+.slide-article .slide-body {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 36px 28px;
+  margin-bottom: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-frame);
+  background: var(--paper-surface);
+  box-shadow: 0 10px 32px var(--shadow-warm);
+  position: relative;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+.slide-article .frame-header {
+  flex: 0 0 auto;
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: 24px;
+  line-height: 1.5;
+  font-weight: 600;
+  color: var(--ink-muted);
+  letter-spacing: 0.01em;
+  margin-bottom: 22px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.article-body-text {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  justify-content: flex-start;
+  min-height: 0;
+}
+
+.article-p {
+  font-size: 33px;
+  line-height: 1.86;
+  color: var(--ink-body);
+  letter-spacing: 0.015em;
+  white-space: pre-wrap;
+  -webkit-font-smoothing: antialiased;
+}
+
+.article-p-start {
+  text-indent: 2em;
+}
+
+.article-p-continue {
+  text-indent: 0;
+}
+
+.article-quote {
+  position: relative;
+  padding: 12px 12px 12px 30px;
+  margin: 0;
+  background: var(--quote-surface);
+  border: 1px solid rgba(166, 90, 58, 0.12);
+  border-left: 0;
+  border-radius: 14px;
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: 29px;
+  line-height: 1.78;
+  color: var(--quote-ink);
+  letter-spacing: 0.01em;
+  white-space: pre-wrap;
+  -webkit-font-smoothing: antialiased;
+}
+
+.article-quote::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 16px;
+  bottom: 16px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--quote-rule);
+}
+
+/* --- Original photo slides --- */
+.slide-photo .slide-body {
+  padding: 32px 34px 34px;
+}
+
+.article-photo-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.article-photo-media {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.article-photo-img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 14px;
+  background: rgba(42, 38, 34, 0.04);
+  box-shadow:
+    0 0 0 1px rgba(42, 38, 34, 0.08),
+    0 12px 30px rgba(120, 86, 58, 0.12);
+}
+
+.article-photo-caption {
+  flex: 0 0 auto;
+  margin-top: 0;
+  font-size: 24px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+
+/* --- Cover slide --- */
+.slide-cover {
+  background-color: var(--paper-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.slide-cover::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 252, 247, 0.94) 0%,
+    rgba(255, 252, 247, 0.8) 42%,
+    rgba(243, 237, 228, 0.92) 100%
+  );
+  z-index: 0;
+}
+
+.slide-cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 252, 247, 0.66) 0%, rgba(255, 252, 247, 0.3) 62%, rgba(255, 252, 247, 0.08) 100%),
+    linear-gradient(180deg, rgba(255, 252, 247, 0) 0%, rgba(255, 252, 247, 0.7) 62%, rgba(243, 237, 228, 0.76) 100%);
+  box-shadow: inset 0 0 0 1px rgba(166, 90, 58, 0.08);
+  z-index: 0;
+}
+
+.slide-cover .slide-header {
+  display: none;
+}
+
+.slide-cover .slide-body {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  min-height: 0;
+  padding-bottom: 0;
+}
+
+.cover-title-card {
+  width: 100%;
+  max-width: 980px;
+  min-height: 900px;
+  margin: 0 auto;
+  padding: 70px 24px 54px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.cover-title-card.glass-card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cover-kicker {
+  position: relative;
+  margin-bottom: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 23px;
+  line-height: 1.2;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.1em;
+}
+
+.cover-kicker::before {
+  content: "";
+  display: block;
+  width: 54px;
+  height: 3px;
+  margin-bottom: 13px;
+  border-radius: 2px;
+  background: rgba(166, 90, 58, 0.54);
+}
+
+.cover-title {
+  max-width: 980px;
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-weight: 700;
+  color: var(--ink-primary);
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+  text-shadow: 0 2px 18px rgba(255, 252, 247, 0.82);
+}
+
+.cover-title-short {
+  font-size: 108px;
+  line-height: 1.1;
+}
+
+.cover-title-medium {
+  font-size: 96px;
+  line-height: 1.12;
+}
+
+.cover-title-long {
+  font-size: 74px;
+  line-height: 1.16;
+}
+
+/* --- End slide --- */
+.slide.slide-end {
+  background: var(--paper-bg);
+}
+
+.slide-end .slide-header {
+  display: none;
+}
+
+.slide-end .slide-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+  padding: 48px 40px 40px;
+  margin-bottom: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-frame);
+  background: var(--paper-surface);
+  box-shadow: 0 10px 32px var(--shadow-warm);
+}
+
+.slide-end .slide-frame-end {
+  padding: 0;
+}
+
+.end-theme {
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 0.06em;
+  margin-bottom: 24px;
+}
+
+.end-line {
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: 34px;
+  line-height: 1.86;
+  color: var(--ink-body);
+  letter-spacing: 0.01em;
+  max-width: 920px;
+}
+
+.end-handle {
+  margin-top: 36px;
+  padding-top: 28px;
+  border-top: 1px solid var(--rule);
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--ink-primary);
+  letter-spacing: 0.01em;
+}
+
+.end-bio {
+  margin-top: 10px;
+  font-size: 28px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+  letter-spacing: 0.01em;
+}

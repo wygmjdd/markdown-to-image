@@ -1,0 +1,11 @@
+{
+  "manifest_version": 1,
+  "source": "sample.md",
+  "original_title": "Markdown To Image 示例",
+  "social_title": "把 Markdown 变成图片组",
+  "cta_theme": "reading",
+  "cta_line1": "一篇文章，也可以变成适合滑动阅读的图片。",
+  "nickname": "作者",
+  "bio": "一个写作者",
+  "chars_per_slide": 220
+}
