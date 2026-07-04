@@ -21,6 +21,7 @@ _MIN_FRAGMENT_CHARS = 8
 _CHAR_CHUNK = 28
 _MAX_CLEANUP_PASSES = 3
 _FIT_TOLERANCE_PX = 2
+_UNBOUNDED_CHAR_LIMIT = 1_000_000_000
 
 _BODY_FITS_JS = f"""() => {{
     const textArea = document.querySelector('.slide-article .article-body-text');
@@ -290,7 +291,13 @@ def _pull_prefix_from_next(
         snapshot = [list(p) for p in pages]
         snapshot[index] = candidate_current
         snapshot[index + 1] = candidate_next
-        if _within_char_limit(candidate_current, max_chars) and _page_fits(candidate_current, index, snapshot, render_page_html, browser_page):
+        if _within_char_limit(candidate_current, max_chars) and _page_fits(
+            candidate_current,
+            index,
+            snapshot,
+            render_page_html,
+            browser_page,
+        ):
             best = (candidate_current, candidate_next)
     return best
 
@@ -380,6 +387,39 @@ def _verify_pages_fit(
         if not _page_fits(page, index, pages, render_page_html, browser_page):
             preview = "".join(block.text for block in page)[:80]
             raise ValueError(f"Browser pagination produced overflowing body page {index + 1}: {preview}")
+
+
+def cleanup_page_endings_with_browser(
+    pages: list[list[ContentBlock]],
+    render_page_html: RenderPageHtml,
+    *,
+    max_chars: int | None = None,
+) -> list[list[ContentBlock]]:
+    """Clean dangling page endings after later balancing has moved content between slides."""
+    if len(pages) < 2:
+        return pages
+
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError(
+            "Article browser cleanup requires Playwright. "
+            "Run `pip install -r scripts/requirements.txt` from the repo root."
+        ) from exc
+
+    char_limit = max_chars if max_chars is not None else _UNBOUNDED_CHAR_LIMIT
+    with sync_playwright() as playwright:
+        browser = launch_browser(playwright)
+        try:
+            browser_page = browser.new_page(viewport=_VIEWPORT)
+            cleaned = _cleanup_page_endings(pages, render_page_html, browser_page, char_limit)
+            cleaned = [_merge_adjacent_blocks(page) for page in cleaned if page]
+            _verify_pages_fit(cleaned, render_page_html, browser_page, char_limit)
+            browser_page.close()
+        finally:
+            browser.close()
+
+    return cleaned
 
 
 def paginate_blocks_with_browser(

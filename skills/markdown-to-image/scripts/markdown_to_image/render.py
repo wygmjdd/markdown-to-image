@@ -9,6 +9,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from markdown_to_image.browser_paginator import (
+    cleanup_page_endings_with_browser,
+    paginate_blocks_with_browser,
+)
+from markdown_to_image.config import REPO_ROOT, enrich_manifest_from_article, load_renderer_config
+from markdown_to_image.overflow import correct_body_page_underfills
+from markdown_to_image.paginator import _merge_adjacent_blocks
 from markdown_to_image.parser import (
     ContentBlock,
     load_manifest,
@@ -17,9 +24,6 @@ from markdown_to_image.parser import (
     resolve_source_path,
     validate_required_manifest_fields,
 )
-from markdown_to_image.browser_paginator import paginate_blocks_with_browser
-from markdown_to_image.paginator import _merge_adjacent_blocks
-from markdown_to_image.config import REPO_ROOT, enrich_manifest_from_article, load_renderer_config
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _STYLES_DIR = _PACKAGE_DIR / "styles"
@@ -428,6 +432,8 @@ def render_article_slides(manifest_path: Path) -> tuple[list[tuple[str, str]], P
             _render_probe_page,
             max_chars=max_chars,
         )
+        body_pages = correct_body_page_underfills(body_pages, _render_probe_page)
+        body_pages = cleanup_page_endings_with_browser(body_pages, _render_probe_page)
         body_pages = [_merge_adjacent_blocks(page) for page in body_pages if page]
         for page in body_pages:
             body_slides.append(("text", page))

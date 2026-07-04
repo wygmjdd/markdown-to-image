@@ -18,6 +18,13 @@ def _import_render_module():
     return render
 
 
+def _import_browser_paginator_module():
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    from markdown_to_image import browser_paginator
+
+    return browser_paginator
+
+
 def _import_cli_module():
     sys.path.insert(0, str(SCRIPTS_DIR))
     import render_markdown_to_image
@@ -141,6 +148,143 @@ def test_chars_per_slide_changes_body_pagination(tmp_path: Path) -> None:
         return len([name for name, _ in slides if name != "01-cover.png" and not name.endswith("-end.png")])
 
     assert render_with_limit(120) > render_with_limit(600)
+
+
+def test_browser_paginated_pages_are_underfill_corrected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    render = _import_render_module()
+    article_path = tmp_path / "article.md"
+    article_path.write_text("第一段正文。\n\n第二段正文。\n", encoding="utf-8")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "source": str(article_path),
+                "original_title": "分页回填测试",
+                "social_title": "分页回填测试标题",
+                "cta_line1": "结束语。",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    first_page = [render.ContentBlock("paragraph", "第一页内容。", 0)]
+    second_page = [render.ContentBlock("paragraph", "被拉回第一页的内容。", 1)]
+    corrected_pages = [[*first_page, *second_page]]
+    called = False
+
+    def fake_paginate_blocks_with_browser(*args, **kwargs):
+        return [first_page, second_page]
+
+    def fake_correct_body_page_underfills(pages, render_page_html):
+        nonlocal called
+        called = True
+        assert pages == [first_page, second_page]
+        return corrected_pages
+
+    monkeypatch.setattr(render, "paginate_blocks_with_browser", fake_paginate_blocks_with_browser)
+    monkeypatch.setattr(render, "correct_body_page_underfills", fake_correct_body_page_underfills)
+
+    slides, _ = render.render_article_slides(manifest_path)
+    body_slides = [name for name, _ in slides if name != "01-cover.png" and not name.endswith("-end.png")]
+
+    assert called
+    assert body_slides == ["02.png"]
+    assert "被拉回第一页的内容" in slides[1][1]
+
+
+def test_underfill_correction_is_followed_by_page_ending_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    render = _import_render_module()
+    article_path = tmp_path / "article.md"
+    article_path.write_text("第一段正文。\n\n第二段正文。\n", encoding="utf-8")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "source": str(article_path),
+                "original_title": "断句清理测试",
+                "social_title": "断句清理测试标题",
+                "cta_line1": "结束语。",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    initial_pages = [[render.ContentBlock("paragraph", "原始第一页。", 0)]]
+    dangling_pages = [
+        [render.ContentBlock("paragraph", "第一页被回填到逗号，", 0)],
+        [render.ContentBlock("paragraph", "后半句应该继续清理。", 0)],
+    ]
+    cleaned_pages = [[render.ContentBlock("paragraph", "第一页被回填到逗号，后半句应该继续清理。", 0)]]
+    cleanup_called = False
+
+    def fake_paginate_blocks_with_browser(*args, **kwargs):
+        return initial_pages
+
+    def fake_correct_body_page_underfills(pages, render_page_html):
+        assert pages == initial_pages
+        return dangling_pages
+
+    def fake_cleanup_page_endings_with_browser(pages, render_page_html):
+        nonlocal cleanup_called
+        cleanup_called = True
+        assert pages == dangling_pages
+        return cleaned_pages
+
+    monkeypatch.setattr(render, "paginate_blocks_with_browser", fake_paginate_blocks_with_browser)
+    monkeypatch.setattr(render, "correct_body_page_underfills", fake_correct_body_page_underfills)
+    monkeypatch.setattr(
+        render,
+        "cleanup_page_endings_with_browser",
+        fake_cleanup_page_endings_with_browser,
+    )
+
+    slides, _ = render.render_article_slides(manifest_path)
+    body_slides = [name for name, _ in slides if name != "01-cover.png" and not name.endswith("-end.png")]
+
+    assert cleanup_called
+    assert body_slides == ["02.png"]
+    assert "第一页被回填到逗号，后半句应该继续清理。" in slides[1][1]
+
+
+def test_cleanup_page_endings_with_browser_pulls_prefix_after_dangling_comma() -> None:
+    render = _import_render_module()
+    browser_paginator = _import_browser_paginator_module()
+    pages = [
+        [render.ContentBlock("paragraph", "第一页被回填到逗号，", 0)],
+        [render.ContentBlock("paragraph", "后半句应该继续清理。", 0)],
+    ]
+
+    def render_probe(blocks: list, total: int, page_index: int = 0, all_pages: list | None = None) -> str:
+        pages_snapshot = all_pages if all_pages is not None else [blocks]
+        continues = False
+        if page_index > 0 and pages_snapshot[page_index - 1] and blocks:
+            previous_last = pages_snapshot[page_index - 1][-1]
+            first_block = blocks[0]
+            continues = (
+                previous_last.kind == "paragraph"
+                and first_block.kind == "paragraph"
+                and previous_last.source_id == first_block.source_id
+            )
+        return render._render_body_page(
+            "断句清理测试标题",
+            blocks,
+            1,
+            max(total, 1),
+            "作者",
+            continues_paragraph=continues,
+        )
+
+    cleaned = browser_paginator.cleanup_page_endings_with_browser(pages, render_probe)
+
+    assert len(cleaned) == 1
+    assert "".join(block.text for block in cleaned[0]) == "第一页被回填到逗号，后半句应该继续清理。"
 
 
 def test_missing_required_manifest_fields_fail_fast(tmp_path: Path) -> None:
