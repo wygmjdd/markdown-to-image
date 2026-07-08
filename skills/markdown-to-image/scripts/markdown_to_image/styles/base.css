@@ -7,7 +7,7 @@
 html,
 body {
   width: 1080px;
-  height: 1440px;
+  height: var(--slide-height, 1440px);
   overflow: hidden;
 }
 
@@ -19,7 +19,7 @@ body {
 
 .slide {
   width: 1080px;
-  height: 1440px;
+  height: var(--slide-height, 1440px);
   padding: 72px 80px 100px;
   display: flex;
   flex-direction: column;

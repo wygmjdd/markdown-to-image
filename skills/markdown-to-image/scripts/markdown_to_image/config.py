@@ -16,6 +16,7 @@ CATEGORIES_PATH = REPO_ROOT / "data" / "categories.yml"
 SUPPORTED_MANIFEST_VERSION = 1
 
 DEFAULT_CONFIG: dict[str, Any] = {
+    "platform": "rednote",
     "nickname": "作者",
     "bio": "",
     "chars_per_slide": 340,
@@ -43,6 +44,23 @@ DEFAULT_CONFIG: dict[str, Any] = {
         ],
     },
 }
+
+_PLATFORM_ALIASES = {
+    "rednote": "rednote",
+    "xiaohongshu": "rednote",
+    "小红书": "rednote",
+    "x": "x",
+    "twitter": "x",
+}
+
+
+def normalize_platform(value: Any) -> str:
+    raw = str(value or DEFAULT_CONFIG["platform"]).strip().lower()
+    platform = _PLATFORM_ALIASES.get(raw)
+    if platform is None:
+        supported = ", ".join(sorted({"rednote", "x"}))
+        raise ValueError(f"Unsupported platform {value!r}; expected one of: {supported}")
+    return platform
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

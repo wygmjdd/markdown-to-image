@@ -1,13 +1,13 @@
 ---
 name: markdown-to-image
-description: Generate social-media slide images from Markdown articles. Use when an AI agent needs to convert a Markdown post into ordered PNG cards, especially Xiaohongshu/RedNote-style article slides with cover, paginated body text, optional original image slides, and an end CTA.
+description: Generate social-media slide images from Markdown articles. Use when an AI agent needs to convert a Markdown post into ordered PNG cards, including RedNote-style article slides and X four-image long-form posts.
 ---
 
 # Markdown To Image
 
 Turn a Markdown article into an ordered PNG slide series for social publishing.
 
-The bundled renderer is in `scripts/`. It parses frontmatter Markdown, strips inline links to anchor text, paginates body text with Chromium-measured fit, renders a cover/body/end slide set, and can run QA for overflow.
+The bundled renderer is in `scripts/`. It parses frontmatter Markdown, strips inline links to anchor text, paginates body text with Chromium-measured fit, renders platform-specific slide sets, and can run QA for overflow.
 
 ## Setup
 
@@ -27,18 +27,22 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.venv/playwright-browsers" \
 
 ## Workflow
 
-1. Read the Markdown article and frontmatter.
-2. Check for stable defaults in `markdown-to-image.config.yml` or `.markdown-to-image.yml` in the output/manifest directory, its parent directories, manifest `project_root`, or the current working directory.
-3. Propose 3 social title candidates and wait for the user's explicit choice.
-4. Write `manifest.json` beside the desired output images. Put stable identity fields in config when possible; use the manifest for per-article overrides.
-5. Run the renderer:
+1. Confirm the target platform first: `rednote` or `x`.
+2. Read the Markdown article and frontmatter.
+3. Check for stable defaults in `markdown-to-image.config.yml` or `.markdown-to-image.yml` in the output/manifest directory, its parent directories, manifest `project_root`, or the current working directory.
+4. Propose 3 social title candidates and wait for the user's explicit choice. For X, the chosen title is rendered inside `01.png`.
+5. Write `manifest.json` beside the desired output images. Put stable identity fields in config when possible; use the manifest for per-article overrides.
+   - RedNote: include `platform: "rednote"`, `cta_line1`, and optional cover settings.
+   - X: include `platform: "x"`; omit `cta_line1` unless the user wants it for caption text.
+   - X mode renders only article text by default; embedded article images do not consume the 4 image slots.
+6. Run the renderer:
 
 ```bash
 python <skill-dir>/scripts/render_markdown_to_image.py --manifest <output-dir>/manifest.json --qa
 ```
 
-6. Create a short post caption file if the user is preparing a social upload.
-7. Tell the user the output folder and that images should be uploaded in filename order.
+7. Create a short post caption file if the user is preparing a social upload.
+8. Tell the user the output folder and that images should be uploaded in filename order.
 
 ## Manifest
 
@@ -49,10 +53,23 @@ Minimum manifest:
 ```json
 {
   "manifest_version": 1,
+  "platform": "rednote",
   "source": "path/to/article.md",
   "original_title": "Original article title",
   "social_title": "Chosen social title",
   "cta_line1": "One article-specific closing line."
+}
+```
+
+Minimum X manifest:
+
+```json
+{
+  "manifest_version": 1,
+  "platform": "x",
+  "source": "path/to/article.md",
+  "original_title": "Original article title",
+  "social_title": "Chosen social title"
 }
 ```
 
@@ -63,6 +80,7 @@ Stable defaults can live in `markdown-to-image.config.yml`:
 ```yaml
 # Optional, when output manifests live outside the article project:
 # project_root: /absolute/path/to/source/repo
+platform: rednote
 nickname: Author handle
 bio: Short bio
 chars_per_slide: 340
@@ -74,11 +92,16 @@ cta_mapping:
     - 30-fen-zhong-ri-ji
 ```
 
-The config controls defaults only. Manifest fields such as `nickname`, `bio`, `cta_theme`, and `cta_label` override config values for a single article.
+The config controls defaults only. Manifest fields such as `platform`, `nickname`, `bio`, `cta_theme`, and `cta_label` override config values for a single article.
+
+## Platform Behavior
+
+- `rednote` (default): writes `01-cover.png`, body slides, and `NN-end.png`.
+- `x`: writes up to 4 body images named `01.png` through `04.png`; no cover or end slide. The renderer increases slide height as needed so long articles fit into the 4-image limit. The chosen `social_title` is rendered at the top of `01.png`.
 
 ## Cover Background
 
-Default to the text-only paper cover. Add `cover_base: "cover-base.png"` only when the article has a strong visual scene and the user wants an image-backed cover. The image file must live beside `manifest.json`; leftover cover images are ignored unless the manifest declares a cover background.
+Default RedNote output uses the text-only paper cover. Add `cover_base: "cover-base.png"` only when the article has a strong visual scene and the user wants an image-backed cover. The image file must live beside `manifest.json`; leftover cover images are ignored unless the manifest declares a cover background. X mode does not render a cover.
 
 Do not ask an image model to draw title text; the renderer overlays the real title.
 

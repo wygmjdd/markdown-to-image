@@ -13,7 +13,7 @@ from markdown_to_image.qa import audit_article_manifest, format_issues
 from markdown_to_image.render import COVER_BASE_FILENAME, render_article_slides
 
 _VIEWPORT = {"width": 1080, "height": 1440}
-_GENERATED_SLIDE_IMAGE_RE = re.compile(r"^(?:01-cover|0[2-9]|[1-9]\d|(?:0[2-9]|[1-9]\d)-end)\.png$")
+_GENERATED_SLIDE_IMAGE_RE = re.compile(r"^(?:01|01-cover|0[2-9]|[1-9]\d|(?:0[2-9]|[1-9]\d)-end)\.png$")
 
 
 def screenshot_slides(slides: list[tuple[str, str]], output_dir: Path) -> list[Path]:
@@ -43,7 +43,7 @@ def screenshot_slides(slides: list[tuple[str, str]], output_dir: Path) -> list[P
             for filename, slide_html in slides:
                 out_path = output_dir / filename
                 page.set_content(slide_html, wait_until="load")
-                page.screenshot(path=str(out_path), full_page=False, timeout=60_000)
+                page.screenshot(path=str(out_path), full_page=True, timeout=60_000)
                 written.append(out_path)
         finally:
             browser.close()

@@ -1,4 +1,4 @@
 interface:
   display_name: "Markdown To Image"
-  short_description: "Render Markdown articles into social PNG slides"
-  default_prompt: "Use $markdown-to-image to turn this Markdown article into a polished social image series."
+  short_description: "Render Markdown articles into RedNote or X social PNG slides"
+  default_prompt: "Use $markdown-to-image to turn this Markdown article into a polished social image series. Confirm RedNote or X first."

@@ -25,7 +25,7 @@ from markdown_to_image.parser import (
     validate_required_manifest_fields,
 )
 from markdown_to_image.paginator import paginate_blocks
-from markdown_to_image.config import enrich_manifest_from_article, load_renderer_config
+from markdown_to_image.config import enrich_manifest_from_article, load_renderer_config, normalize_platform
 
 _VIEWPORT = {"width": 1080, "height": 1440}
 _MIN_MID_PAGE_FILL = 0.72
@@ -189,6 +189,7 @@ def audit_article_manifest(
     project_root = _project_root_from_manifest(raw_manifest)
     config = load_renderer_config(manifest_path.parent, project_root)
     manifest = merge_manifest_defaults(raw_manifest, config)
+    platform = normalize_platform(manifest.get("platform"))
     project_root = _project_root_from_manifest(manifest)
     validate_required_manifest_fields(manifest)
     source_path = resolve_source_path(manifest, manifest_path)
@@ -198,7 +199,7 @@ def audit_article_manifest(
 
     issues: list[QAIssue] = []
     issues.extend(_link_issues(article.blocks))
-    if not include_render:
+    if not include_render and platform != "x":
         issues.extend(_pagination_issues(article.blocks, max_chars))
     if include_render:
         issues.extend(_render_issues(manifest_path))

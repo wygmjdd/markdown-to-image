@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Installable Agent Skill for turning Markdown articles into ordered PNG slide images for social publishing, especially RedNote/Xiaohongshu-style article cards.
+Installable Agent Skill for turning Markdown articles into ordered PNG slide images for social publishing, including RedNote/Xiaohongshu-style article cards and X four-image long-form posts.
 
 This repository follows the Agent Skills folder layout: the reusable instructions live in `skills/markdown-to-image/SKILL.md`, and the deterministic renderer lives beside it under `scripts/`. It works best in tools that can load Agent Skills, and the renderer can also be run manually from the command line.
 
@@ -39,7 +39,7 @@ If you are using a Codex model inside Cursor, install the skill for Cursor. The 
 
 ## Recommended Usage With An Agent
 
-In normal use, ask your agent to use `markdown-to-image` and tell it the article path plus output directory.
+In normal use, ask your agent to use `markdown-to-image` and tell it the target platform, article path, and output directory.
 
 Example prompt:
 
@@ -53,7 +53,19 @@ Example prompt:
 请生成 manifest.json、图片和 post-caption.md。
 ```
 
-The agent should read the article, propose title candidates, wait for your title choice, write `manifest.json` in the output directory, render the images, run QA, and summarize the output files.
+For X:
+
+```text
+使用 markdown-to-image 这个 skill，把下面这篇文章生成 X 四图长文：
+/path/to/wygmjdd.github.io/content/docs/2026/06/example.md
+
+输出目录放到：
+/path/to/wygmjdd.github.io/static/red-images/articles/example-x/
+
+请生成 manifest.json、图片和 post-caption.md。
+```
+
+The agent should confirm the platform first, read the article, propose title candidates, wait for your title choice, write `manifest.json` in the output directory, render the images, run QA, and summarize the output files.
 
 ## Stable Defaults
 
@@ -64,6 +76,7 @@ Copy `markdown-to-image.config.example.yml` to `markdown-to-image.config.yml` in
 ```yaml
 # Optional, when output manifests live outside the article project:
 # project_root: /absolute/path/to/source/repo
+platform: rednote
 nickname: 我要改名叫嘟嘟
 bio: 一个用文字分享生活和读书感悟的程序员
 chars_per_slide: 340
@@ -93,6 +106,7 @@ Use config for values that should stay stable across articles:
 
 | Config field | Controls |
 | --- | --- |
+| `platform` | Default output platform: `rednote` or `x`. |
 | `project_root` | Base directory for repo-relative `source` paths and site-root images. |
 | `nickname` | Body slide footer and end-slide handle. |
 | `bio` | End-slide author bio. |
@@ -102,7 +116,14 @@ Use config for values that should stay stable across articles:
 
 The built-in CTA labels are `reading` → `读书感悟`, `summary` → `总结复盘`, and `life` → `生活分享`.
 
-Use the per-article `manifest.json` for values that change per article: `social_title`, `cta_line1`, optional `cover_base`, and article-specific overrides. If the manifest sets `project_root`, `nickname`, `bio`, `cta_theme`, or `cta_label`, the manifest wins over the config. Use `cta_label` when you want an exact custom label instead of the built-in labels.
+Use the per-article `manifest.json` for values that change per article: `platform`, `social_title`, RedNote `cta_line1`, optional `cover_base`, and article-specific overrides. If the manifest sets `project_root`, `nickname`, `bio`, `cta_theme`, or `cta_label`, the manifest wins over the config. Use `cta_label` when you want an exact custom label instead of the built-in labels.
+
+## Platform Modes
+
+| Platform | Output |
+| --- | --- |
+| `rednote` | Current RedNote flow: cover, body slides, optional original image slides, and end CTA. |
+| `x` | Up to 4 body images named `01.png` through `04.png`; no cover or end slide. The renderer increases image height as needed and puts the chosen `social_title` at the top of `01.png`. Embedded article images are skipped by default so the 4 image slots are reserved for text. |
 
 ## Output Rule
 
@@ -114,7 +135,7 @@ If the manifest is here:
 /path/to/output-dir/manifest.json
 ```
 
-the images are written here:
+RedNote images are written here:
 
 ```text
 /path/to/output-dir/01-cover.png
@@ -122,6 +143,15 @@ the images are written here:
 /path/to/output-dir/03.png
 ...
 /path/to/output-dir/NN-end.png
+```
+
+X images are written here, up to four files:
+
+```text
+/path/to/output-dir/01.png
+/path/to/output-dir/02.png
+...
+/path/to/output-dir/04.png
 ```
 
 So yes: when using a skill-aware agent, usually you can just tell the model the desired output directory.
@@ -157,6 +187,7 @@ The example manifest is self-contained, so it does not need a local blog checkou
 ```json
 {
   "manifest_version": 1,
+  "platform": "rednote",
   "source": "article.md",
   "original_title": "15岁带弟弟上坡挖洋芋，20年后再来一次",
   "social_title": "上坡挖洋芋时，母亲连说五个谜语，我突然一点不累了",
@@ -217,6 +248,8 @@ Render a blog output directory:
 
 Typical output:
 
+RedNote:
+
 ```text
 manifest.json
 01-cover.png
@@ -227,19 +260,31 @@ NN-end.png
 post-caption.md
 ```
 
+X:
+
+```text
+manifest.json
+01.png
+02.png
+...
+04.png
+post-caption.md
+```
+
 `post-caption.md` is typically written by the agent as a publishing helper. The renderer itself writes the PNG files.
 
 ## Manifest Fields
 
-Required:
+Core fields:
 
 | Field | Meaning |
 | --- | --- |
 | `manifest_version` | Use `1`. |
+| `platform` | `rednote` by default. Set `x` for X four-image mode. |
 | `source` | Markdown article path. Absolute or relative. |
 | `original_title` | Original article title. |
-| `social_title` | Title rendered on cover and body headers. |
-| `cta_line1` | End-slide closing sentence. |
+| `social_title` | Title rendered on RedNote cover/body headers, or inside X `01.png`. |
+| `cta_line1` | RedNote end-slide closing sentence. Required for `rednote`, optional for `x`. |
 
 Common optional fields:
 
@@ -258,7 +303,7 @@ More detail: `skills/markdown-to-image/references/manifest.md`.
 
 ## Cover Backgrounds
 
-By default the renderer creates a text-first paper cover with no background image.
+By default the RedNote renderer creates a text-first paper cover with no background image. X mode does not render a cover.
 
 Use `cover_base` only when the article has a strong visual scene and a quiet background helps recognition:
 

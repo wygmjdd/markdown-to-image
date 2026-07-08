@@ -13,7 +13,12 @@ from markdown_to_image.browser_paginator import (
     cleanup_page_endings_with_browser,
     paginate_blocks_with_browser,
 )
-from markdown_to_image.config import REPO_ROOT, enrich_manifest_from_article, load_renderer_config
+from markdown_to_image.config import (
+    REPO_ROOT,
+    enrich_manifest_from_article,
+    load_renderer_config,
+    normalize_platform,
+)
 from markdown_to_image.overflow import correct_body_page_underfills
 from markdown_to_image.paginator import _merge_adjacent_blocks
 from markdown_to_image.parser import (
@@ -29,6 +34,10 @@ _PACKAGE_DIR = Path(__file__).resolve().parent
 _STYLES_DIR = _PACKAGE_DIR / "styles"
 _CSS_PATH = _STYLES_DIR / "article.css"
 _BODY_SLIDE_WARN_THRESHOLD = 12
+_DEFAULT_SLIDE_HEIGHT = 1440
+_X_MAX_BODY_SLIDES = 4
+_X_MAX_SLIDE_HEIGHT = 7200
+_X_HEIGHT_GROWTH = 1.22
 
 COVER_AI_FILENAME = "cover-ai.png"
 COVER_BASE_FILENAME = "cover-base.png"
@@ -80,6 +89,7 @@ def _slide_shell(
     page: int = 0,
     total: int = 0,
     show_page_footer: bool = False,
+    slide_height: int = _DEFAULT_SLIDE_HEIGHT,
 ) -> str:
     slide_class = f"slide {extra_class}".strip()
     style_attr = ""
@@ -97,6 +107,7 @@ def _slide_shell(
 <head>
   <meta charset="utf-8" />
   {_css_block()}
+  <style>:root {{ --slide-height: {int(slide_height)}px; }}</style>
 </head>
 <body>
   <div class="{slide_class}"{style_attr}>
@@ -143,6 +154,10 @@ def _render_body_page(
     nickname: str,
     *,
     continues_paragraph: bool = False,
+    extra_class: str = "slide-article",
+    first_page_title: str = "",
+    show_frame_header: bool = True,
+    slide_height: int = _DEFAULT_SLIDE_HEIGHT,
 ) -> str:
     parts: list[str] = []
     seen_sources: set[int] = set()
@@ -159,17 +174,25 @@ def _render_body_page(
         seen_sources.add(block.source_id)
         parts.append(_render_block_html(block.kind, block.text, paragraph_start=paragraph_start))
 
+    header_html = f'<div class="frame-header">{html.escape(header)}</div>' if show_frame_header else ""
+    title_html = (
+        f'<div class="x-article-title">{html.escape(first_page_title)}</div>'
+        if first_page_title.strip()
+        else ""
+    )
     body = f"""
-    <div class="frame-header">{html.escape(header)}</div>
+    {title_html}
+    {header_html}
     <div class="article-body-text">{"".join(parts)}</div>
     """
     return _slide_shell(
         body,
-        extra_class="slide-article",
+        extra_class=extra_class,
         nickname=nickname,
         page=page,
         total=total,
         show_page_footer=True,
+        slide_height=slide_height,
     )
 
 
@@ -372,6 +395,137 @@ def _render_end_slide(manifest: dict[str, Any]) -> str:
     return _slide_shell(body, extra_class="slide-end")
 
 
+def _page_continues_from_previous(all_pages: list, page_index: int, blocks: list) -> bool:
+    if page_index <= 0 or not all_pages[page_index - 1] or not blocks:
+        return False
+    previous_last = all_pages[page_index - 1][-1]
+    first_block = blocks[0]
+    return (
+        previous_last.kind == "paragraph"
+        and first_block.kind == "paragraph"
+        and previous_last.source_id == first_block.source_id
+    )
+
+
+def _text_char_count(blocks: list[ContentBlock]) -> int:
+    return len("".join(block.text.strip() for block in blocks))
+
+
+def _render_x_probe_page(
+    header: str,
+    nickname: str,
+    slide_height: int,
+):
+    def _probe(
+        blocks: list[ContentBlock],
+        probe_total: int,
+        page_index: int = 0,
+        all_pages: list | None = None,
+    ) -> str:
+        pages_snapshot = all_pages if all_pages is not None else [blocks]
+        continues = _page_continues_from_previous(pages_snapshot, page_index, blocks)
+        return _render_body_page(
+            "",
+            blocks,
+            page_index + 1,
+            max(probe_total, 1),
+            nickname,
+            continues_paragraph=continues,
+            extra_class="slide-article slide-x",
+            first_page_title=header if page_index == 0 else "",
+            show_frame_header=False,
+            slide_height=slide_height,
+        )
+
+    return _probe
+
+
+def _paginate_x_body_pages(
+    text_blocks: list[ContentBlock],
+    header: str,
+    nickname: str,
+) -> tuple[list[list[ContentBlock]], int]:
+    max_chars = max(_text_char_count(text_blocks), 1)
+
+    def paginate_at_height(height: int) -> list[list[ContentBlock]]:
+        return paginate_blocks_with_browser(
+            text_blocks,
+            _render_x_probe_page(header, nickname, height),
+            max_chars=max_chars,
+        )
+
+    low = _DEFAULT_SLIDE_HEIGHT
+    pages = paginate_at_height(low)
+    if len(pages) <= _X_MAX_BODY_SLIDES:
+        return pages, low
+
+    high = low
+    while len(pages) > _X_MAX_BODY_SLIDES and high < _X_MAX_SLIDE_HEIGHT:
+        low = high
+        high = min(_X_MAX_SLIDE_HEIGHT, max(high + 160, int(high * _X_HEIGHT_GROWTH)))
+        pages = paginate_at_height(high)
+
+    if len(pages) > _X_MAX_BODY_SLIDES:
+        raise ValueError(
+            f"X platform render still needs {len(pages)} body images at {high}px height; "
+            f"shorten the article before rendering."
+        )
+
+    best_height = high
+    best_pages = pages
+    left = low + 1
+    right = high - 1
+    while left <= right:
+        mid = (left + right) // 2
+        candidate_pages = paginate_at_height(mid)
+        if len(candidate_pages) <= _X_MAX_BODY_SLIDES:
+            best_height = mid
+            best_pages = candidate_pages
+            right = mid - 1
+        else:
+            left = mid + 1
+
+    return best_pages, best_height
+
+
+def _render_x_article_slides(article: Any, manifest: dict[str, Any]) -> list[tuple[str, str]]:
+    header = _social_title(manifest)
+    nickname = str(manifest.get("nickname") or "")
+    text_blocks = [block for block in article.blocks if block.kind != "image"]
+    if not text_blocks:
+        raise ValueError("X platform render needs at least one text or quote block; image-only articles are unsupported.")
+
+    pages, slide_height = _paginate_x_body_pages(text_blocks, header, nickname)
+    slides: list[tuple[str, str]] = []
+    previous_text_page: list[ContentBlock] | None = None
+    body_total = len(pages)
+    for index, blocks in enumerate(pages, start=1):
+        continues_paragraph = False
+        if previous_text_page and blocks:
+            previous_last = previous_text_page[-1]
+            first_block = blocks[0]
+            continues_paragraph = (
+                previous_last.kind == "paragraph"
+                and first_block.kind == "paragraph"
+                and previous_last.source_id == first_block.source_id
+            )
+        html_doc = _render_body_page(
+            "",
+            blocks,
+            index,
+            body_total,
+            nickname,
+            continues_paragraph=continues_paragraph,
+            extra_class="slide-article slide-x",
+            first_page_title=header if index == 1 else "",
+            show_frame_header=False,
+            slide_height=slide_height,
+        )
+        slides.append((f"{index:02d}.png", html_doc))
+        previous_text_page = blocks
+    return slides
+
+
 def render_article_slides(manifest_path: Path) -> tuple[list[tuple[str, str]], Path]:
     manifest_path = manifest_path.resolve()
     manifest_dir = manifest_path.parent
@@ -379,6 +533,7 @@ def render_article_slides(manifest_path: Path) -> tuple[list[tuple[str, str]], P
     project_root = _project_root_from_manifest(raw_manifest)
     config = load_renderer_config(manifest_dir, project_root)
     manifest = merge_manifest_defaults(raw_manifest, config)
+    manifest["platform"] = normalize_platform(manifest.get("platform"))
     project_root = _project_root_from_manifest(manifest)
     validate_required_manifest_fields(manifest)
 
@@ -391,21 +546,13 @@ def render_article_slides(manifest_path: Path) -> tuple[list[tuple[str, str]], P
     if not article.blocks:
         raise ValueError(f"No content blocks after parsing: {source_path}")
 
+    if manifest["platform"] == "x":
+        return _render_x_article_slides(article, manifest), manifest_dir
+
     max_chars = int(manifest.get("chars_per_slide", 340))
 
     header = _social_title(manifest)
     nickname = str(manifest.get("nickname") or "")
-
-    def _page_continues_from_previous(all_pages: list, page_index: int, blocks: list) -> bool:
-        if page_index <= 0 or not all_pages[page_index - 1] or not blocks:
-            return False
-        previous_last = all_pages[page_index - 1][-1]
-        first_block = blocks[0]
-        return (
-            previous_last.kind == "paragraph"
-            and first_block.kind == "paragraph"
-            and previous_last.source_id == first_block.source_id
-        )
 
     def _render_probe_page(blocks: list, probe_total: int, page_index: int = 0, all_pages: list | None = None) -> str:
         pages_snapshot = all_pages if all_pages is not None else [blocks]

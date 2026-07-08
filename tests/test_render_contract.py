@@ -32,6 +32,13 @@ def _import_cli_module():
     return render_markdown_to_image
 
 
+def _import_qa_module():
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    from markdown_to_image import qa
+
+    return qa
+
+
 def test_render_article_slides_from_standalone_manifest(tmp_path: Path) -> None:
     render = _import_render_module()
 
@@ -435,6 +442,7 @@ def test_manifest_identity_fields_override_project_config(tmp_path: Path) -> Non
 def test_prune_stale_slide_images_preserves_non_slide_png_assets(tmp_path: Path) -> None:
     cli = _import_cli_module()
     for name in (
+        "01.png",
         "01-cover.png",
         "02.png",
         "03-end.png",
@@ -452,6 +460,7 @@ def test_prune_stale_slide_images_preserves_non_slide_png_assets(tmp_path: Path)
 
     cli.prune_stale_slide_images(tmp_path, {"01-cover.png", "02.png", "03-end.png"})
 
+    assert not (tmp_path / "01.png").exists()
     assert not (tmp_path / "04.png").exists()
     assert not (tmp_path / "10.png").exists()
     assert not (tmp_path / "10-end.png").exists()
@@ -558,6 +567,132 @@ def test_project_root_from_config_resolves_repo_relative_source(tmp_path: Path) 
 
     assert output_dir == manifest_path.parent
     assert "配置根目录可以解析文章" in rendered
+
+
+def test_x_platform_renders_title_inside_first_body_image_without_cover_or_end(tmp_path: Path) -> None:
+    render = _import_render_module()
+    article_path = tmp_path / "article.md"
+    article_path.write_text(
+        "这是一段适合发布到 X 的长正文。" * 260,
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "platform": "x",
+                "source": str(article_path),
+                "original_title": "X 平台原始标题",
+                "social_title": "X 平台四图长文标题",
+                "nickname": "我要改名叫嘟嘟",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    slides, _ = render.render_article_slides(manifest_path)
+    names = [name for name, _ in slides]
+    rendered = "\n".join(html for _, html in slides)
+
+    assert names == ["01.png", "02.png", "03.png", "04.png"]
+    assert all(not name.endswith("-end.png") for name in names)
+    assert "01-cover.png" not in names
+    assert "X 平台四图长文标题" in slides[0][1]
+    assert '<div class="x-article-title">X 平台四图长文标题</div>' in slides[0][1]
+    assert '<div class="x-article-title">' not in slides[1][1]
+    assert "X 平台四图长文标题" not in slides[1][1]
+    assert "--slide-height: 1440px" not in rendered
+
+
+def test_x_platform_skips_article_image_blocks_by_default(tmp_path: Path) -> None:
+    render = _import_render_module()
+    article_path = tmp_path / "article.md"
+    article_path.write_text(
+        "第一段正文。\n\n"
+        "![不会占用 X 图片额度](missing-image.jpg)\n\n"
+        "第二段正文。\n",
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "platform": "x",
+                "source": str(article_path),
+                "original_title": "图片跳过测试",
+                "social_title": "X 模式默认只渲染正文",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    slides, _ = render.render_article_slides(manifest_path)
+    rendered = "\n".join(html for _, html in slides)
+
+    assert [name for name, _ in slides] == ["01.png"]
+    assert "第一段正文" in rendered
+    assert "第二段正文" in rendered
+    assert "missing-image.jpg" not in rendered
+    assert "不会占用 X 图片额度" not in rendered
+
+
+def test_project_config_can_supply_default_x_platform(tmp_path: Path) -> None:
+    render = _import_render_module()
+    article_path = tmp_path / "article.md"
+    article_path.write_text("配置平台正文。\n", encoding="utf-8")
+    (tmp_path / "markdown-to-image.config.yml").write_text(
+        "platform: x\n"
+        "nickname: 配置昵称\n",
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "source": str(article_path),
+                "original_title": "配置平台测试",
+                "social_title": "配置可以默认选择 X",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    slides, _ = render.render_article_slides(manifest_path)
+    rendered = "\n".join(html for _, html in slides)
+
+    assert [name for name, _ in slides] == ["01.png"]
+    assert "配置可以默认选择 X" in slides[0][1]
+    assert "@配置昵称" in rendered
+
+
+def test_x_platform_estimate_only_skips_legacy_static_pagination_warnings(tmp_path: Path) -> None:
+    qa = _import_qa_module()
+    article_path = tmp_path / "article.md"
+    article_path.write_text("很短的 X 正文。\n", encoding="utf-8")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "platform": "x",
+                "source": str(article_path),
+                "original_title": "X 估算测试",
+                "social_title": "X estimate-only 不应该跑旧分页估算",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    issues = qa.audit_article_manifest(manifest_path, include_render=False)
+
+    assert issues == []
 
 
 def test_config_in_project_root_applies_to_nested_output_manifest(tmp_path: Path) -> None:

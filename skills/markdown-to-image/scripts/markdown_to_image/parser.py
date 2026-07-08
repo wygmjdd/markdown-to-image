@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 import yaml
 
-from markdown_to_image.config import SUPPORTED_MANIFEST_VERSION
+from markdown_to_image.config import SUPPORTED_MANIFEST_VERSION, normalize_platform
 
 _INLINE_LINK_RE = re.compile(
     r' <small>（<a href="([^"]+)" rel="noopener noreferrer">原文链接</a>'
@@ -27,10 +27,12 @@ _CTA_BLOCK_RE = re.compile(
     re.DOTALL,
 )
 _PROMO_LINE_RE = re.compile(r"^\s*【?\s*↓↓↓")
-REQUIRED_MANIFEST_FIELDS = (
+BASE_REQUIRED_MANIFEST_FIELDS = (
     "source",
     "original_title",
     "social_title",
+)
+REDNOTE_REQUIRED_MANIFEST_FIELDS = (
     "cta_line1",
 )
 
@@ -273,9 +275,12 @@ def load_manifest(path: Path) -> dict[str, Any]:
 
 
 def validate_required_manifest_fields(manifest: dict[str, Any]) -> None:
+    required_fields = list(BASE_REQUIRED_MANIFEST_FIELDS)
+    if normalize_platform(manifest.get("platform")) == "rednote":
+        required_fields.extend(REDNOTE_REQUIRED_MANIFEST_FIELDS)
     missing = [
         field
-        for field in REQUIRED_MANIFEST_FIELDS
+        for field in required_fields
         if not str(manifest.get(field) or "").strip()
     ]
     if missing:
@@ -303,6 +308,7 @@ def _set_default_if_blank(
 
 def merge_manifest_defaults(manifest: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     merged = dict(manifest)
+    _set_default_if_blank(merged, "platform", config, "rednote")
     _set_default_if_blank(merged, "project_root", config)
     _set_default_if_blank(merged, "nickname", config)
     _set_default_if_blank(merged, "bio", config)

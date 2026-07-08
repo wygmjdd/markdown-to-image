@@ -24,12 +24,14 @@ _BODY_OVERFLOW_JS = f"""() => !({_BODY_FITS_JS})()"""
 _UNDERFILL_SLACK_JS = """() => {
     const body = document.querySelector('.slide-article .slide-body');
     const header = document.querySelector('.frame-header');
+    const xTitle = document.querySelector('.x-article-title');
     const textArea = document.querySelector('.slide-article .article-body-text');
     if (!body || !textArea) return { slack: 0, clientHeight: 0 };
     const bodyH = body.clientHeight;
     const headerH = header ? header.scrollHeight : 0;
+    const titleH = xTitle ? xTitle.scrollHeight : 0;
     const textH = textArea.scrollHeight;
-    const slack = bodyH - headerH - textH;
+    const slack = bodyH - headerH - titleH - textH;
     return {
         slack: Math.max(0, slack),
         clientHeight: bodyH
