@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from markdown_to_image.layout import (
     AVAILABLE_TEXT_HEIGHT,
+    DEFAULT_SPLIT_CHARS,
     EFFECTIVE_TEXT_HEIGHT,
     estimate_block_height,
     page_content_height,
@@ -15,10 +16,23 @@ _MIN_PAGE_FILL_RATIO = 0.88
 _MIN_FRAGMENT_CHARS = 4
 _CLAUSE_SEPARATORS = "，,"
 _FLOW_END_PUNCT = "，,、；;：:"
+_CODE_CHAR_WEIGHT = 0.55
+_CODE_SPLIT_OVERAGE = 1.2
+_MIN_CODE_LINE_CHARS = 80
 
 
 def char_count(text: str) -> int:
     return len(text.strip())
+
+
+def _code_char_count(text: str) -> int:
+    return max(1, int(len(text.strip()) * _CODE_CHAR_WEIGHT))
+
+
+def block_char_count(block: ContentBlock) -> int:
+    if block.kind == "code":
+        return _code_char_count(block.text)
+    return char_count(block.text)
 
 
 def split_sentences(text: str) -> list[str]:
@@ -84,6 +98,104 @@ def hard_split_text(text: str, max_chars: int) -> list[str]:
     return parts
 
 
+def _max_code_line_chars(max_chars: int) -> int:
+    return max(_MIN_CODE_LINE_CHARS, int(max_chars / _CODE_CHAR_WEIGHT))
+
+
+def _split_long_code_line(line: str, max_chars: int) -> list[str]:
+    if _code_char_count(line) <= max_chars:
+        return [line]
+
+    limit = _max_code_line_chars(max_chars)
+    min_snap = max(24, int(limit * 0.55))
+    chunks: list[str] = []
+    start = 0
+    while start < len(line):
+        end = min(len(line), start + limit)
+        if end < len(line):
+            snap_at = -1
+            for separator in (" ", "\t", "/", "&", "?", "=", ",", ";", "|", "-"):
+                index = line.rfind(separator, start + min_snap, end)
+                if index >= start + min_snap:
+                    snap_at = max(snap_at, index + 1)
+            if snap_at > start:
+                end = snap_at
+
+        chunk = line[start:end]
+        if chunk:
+            chunks.append(chunk)
+        start = max(end, start + 1)
+
+    return chunks
+
+
+def _split_oversized_code_unit(unit: list[str], max_chars: int) -> list[list[str]]:
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    current_count = 0
+
+    for line in unit:
+        for line_piece in _split_long_code_line(line, max_chars):
+            piece_count = _code_char_count(line_piece)
+            if current and current_count + piece_count > max_chars:
+                chunks.append(current)
+                current = []
+                current_count = 0
+            current.append(line_piece)
+            current_count += piece_count
+
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _code_unit_needs_split(text: str, max_chars: int) -> bool:
+    return _code_char_count(text) > int(max_chars * _CODE_SPLIT_OVERAGE)
+
+
+def split_code_lines(text: str, max_chars: int) -> list[str]:
+    lines = text.strip("\n").splitlines()
+    if not lines:
+        return []
+
+    units: list[list[str]] = []
+    current_unit: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        starts_named_group = stripped.startswith("#") and bool(current_unit)
+        if starts_named_group:
+            units.append(current_unit)
+            current_unit = []
+        current_unit.append(line)
+    if current_unit:
+        units.append(current_unit)
+
+    split_units: list[list[str]] = []
+    for unit in units:
+        unit_text = "\n".join(unit)
+        if _code_unit_needs_split(unit_text, max_chars):
+            split_units.extend(_split_oversized_code_unit(unit, max_chars))
+        else:
+            split_units.append(unit)
+
+    parts: list[str] = []
+    current: list[str] = []
+    current_count = 0
+    for unit in split_units:
+        unit_text = "\n".join(unit)
+        unit_count = _code_char_count(unit_text)
+        if current and current_count + unit_count > max_chars:
+            parts.append("\n".join(current))
+            current = []
+            current_count = 0
+        current.extend(unit)
+        current_count += unit_count
+
+    if current:
+        parts.append("\n".join(current))
+    return [part for part in parts if part.strip()]
+
+
 def iter_text_pieces(text: str, max_chars: int) -> list[str]:
     if char_count(text) <= max_chars:
         return [text.strip()]
@@ -116,7 +228,13 @@ def iter_text_pieces(text: str, max_chars: int) -> list[str]:
 
 
 def _clone_block(block: ContentBlock, text: str) -> ContentBlock:
-    return ContentBlock(block.kind, text, block.source_id)
+    return block.with_text(text)
+
+
+def _join_block_text(left: ContentBlock, right: ContentBlock) -> str:
+    if left.kind == "code":
+        return f"{left.text.rstrip()}\n{right.text.lstrip()}".strip("\n")
+    return left.text + right.text
 
 
 def _can_merge_blocks(left: ContentBlock, right: ContentBlock) -> bool:
@@ -137,15 +255,17 @@ def continues_same_paragraph(page: list[ContentBlock], next_page: list[ContentBl
 
 
 def split_block_to_chunks(block: ContentBlock, max_chars: int) -> list[ContentBlock]:
-    if char_count(block.text) <= max_chars:
+    if block_char_count(block) <= max_chars:
         return [block]
+    if block.kind == "code":
+        return [_clone_block(block, piece) for piece in split_code_lines(block.text, max_chars)]
     return [_clone_block(block, piece) for piece in iter_text_pieces(block.text, max_chars)]
 
 
 def _probe_page_with_piece(page: list[ContentBlock], piece: ContentBlock) -> list[ContentBlock]:
     probe = list(page)
     if probe and _can_merge_blocks(probe[-1], piece):
-        probe[-1] = _clone_block(probe[-1], probe[-1].text + piece.text)
+        probe[-1] = _clone_block(probe[-1], _join_block_text(probe[-1], piece))
     else:
         probe.append(piece)
     return probe
@@ -160,7 +280,7 @@ def _can_append_flow_piece(page: list[ContentBlock], piece: ContentBlock) -> boo
 
 def _append_flow_piece(page: list[ContentBlock], piece: ContentBlock) -> None:
     if page and _can_merge_blocks(page[-1], piece):
-        page[-1] = _clone_block(page[-1], page[-1].text + piece.text)
+        page[-1] = _clone_block(page[-1], _join_block_text(page[-1], piece))
         return
     page.append(piece)
 
@@ -169,6 +289,11 @@ def _expand_block_to_flow_pieces(block: ContentBlock, max_chars: int) -> list[Co
     text = block.text.strip()
     if not text:
         return []
+
+    if block.kind == "code":
+        if page_content_height([block]) <= EFFECTIVE_TEXT_HEIGHT and block_char_count(block) <= max_chars:
+            return [block]
+        return split_block_to_chunks(block, max_chars)
 
     if page_content_height([block]) <= EFFECTIVE_TEXT_HEIGHT:
         sentences = split_sentences(text)
@@ -199,7 +324,7 @@ def _merge_adjacent_blocks(blocks: list[ContentBlock]) -> list[ContentBlock]:
     merged: list[ContentBlock] = []
     for block in blocks:
         if merged and _can_merge_blocks(merged[-1], block):
-            merged[-1] = _clone_block(merged[-1], merged[-1].text + block.text)
+            merged[-1] = _clone_block(merged[-1], _join_block_text(merged[-1], block))
             continue
         merged.append(block)
 
@@ -230,12 +355,12 @@ def _merge_page_fragments(pages: list[list[ContentBlock]]) -> list[list[ContentB
         for block in page:
             if cleaned and _is_tiny_fragment(block) and _can_merge_blocks(cleaned[-1], block):
                 prev = cleaned[-1]
-                cleaned[-1] = _clone_block(prev, prev.text + block.text)
+                cleaned[-1] = _clone_block(prev, _join_block_text(prev, block))
                 continue
             if _is_tiny_fragment(block) and index + 1 < len(pages) and pages[index + 1]:
                 nxt = pages[index + 1][0]
                 if _can_merge_blocks(block, nxt):
-                    pages[index + 1][0] = _clone_block(nxt, block.text + nxt.text)
+                    pages[index + 1][0] = _clone_block(nxt, _join_block_text(block, nxt))
                     continue
             cleaned.append(block)
         pages[index] = cleaned
@@ -260,6 +385,12 @@ def _pull_leading_piece(block: ContentBlock) -> tuple[ContentBlock | None, Conte
     text = block.text.strip()
     if not text:
         return None, None
+
+    if block.kind == "code":
+        pieces = split_code_lines(text, max(80, DEFAULT_SPLIT_CHARS // 2))
+        if len(pieces) > 1:
+            return _clone_block(block, pieces[0]), _clone_block(block, "\n".join(pieces[1:]))
+        return _clone_block(block, text), None
 
     sentences = split_sentences(text)
     if len(sentences) > 1:
@@ -378,7 +509,7 @@ def _fix_dangling_page_breaks(pages: list[list[ContentBlock]]) -> list[list[Cont
 
             peeled = _clone_block(last, peeled_text)
             if nxt and _can_merge_blocks(peeled, nxt[0]):
-                nxt[0] = _clone_block(peeled, peeled.text + nxt[0].text)
+                nxt[0] = _clone_block(peeled, _join_block_text(peeled, nxt[0]))
             else:
                 nxt.insert(0, peeled)
             changed = True
@@ -497,7 +628,7 @@ def paginate_blocks(blocks: list[ContentBlock], max_chars: int = 340) -> list[li
     stream: list[ContentBlock] = []
     for source_id, block in enumerate(blocks):
         for piece in _expand_block_to_flow_pieces(block, max_chars):
-            stream.append(ContentBlock(piece.kind, piece.text, source_id))
+            stream.append(piece.with_text(piece.text, source_id))
 
     pages: list[list[ContentBlock]] = []
     current_page: list[ContentBlock] = []

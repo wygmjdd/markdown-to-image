@@ -125,6 +125,10 @@ Use the per-article `manifest.json` for values that change per article: `platfor
 | `rednote` | Current RedNote flow: cover, body slides, optional original image slides, and end CTA. |
 | `x` | Up to 4 body images named `01.png` through `04.png`; no cover or end slide. The renderer increases image height as needed and puts the chosen `social_title` at the top of `01.png`. Embedded article images are skipped by default so the 4 image slots are reserved for text. |
 
+## Markdown Support
+
+The renderer keeps normal paragraphs, block quotes, Markdown/HTML image blocks, inline code, fenced code blocks, and four-space indented code blocks. Code blocks are rendered as compact monospace code cards and are paginated at logical line groups so command examples stay readable.
+
 ## Output Rule
 
 The renderer writes PNGs beside the manifest.

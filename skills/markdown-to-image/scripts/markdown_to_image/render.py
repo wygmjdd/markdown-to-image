@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import html
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -55,6 +56,7 @@ _CATEGORY_ALIASES = {
 }
 
 _CSS_BLOCK_CACHE: str | None = None
+_INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 
 
 def _social_title(manifest: dict[str, Any]) -> str:
@@ -117,12 +119,48 @@ def _slide_shell(
 </html>"""
 
 
-def _render_block_html(block_kind: str, text: str, *, paragraph_start: bool = True) -> str:
-    escaped = html.escape(text)
-    if block_kind == "quote":
-        return f'<div class="article-quote">{escaped}</div>'
+def _render_inline_text(text: str) -> str:
+    parts: list[str] = []
+    cursor = 0
+    for match in _INLINE_CODE_RE.finditer(text):
+        parts.append(html.escape(text[cursor : match.start()]))
+        parts.append(f'<code class="article-inline-code">{html.escape(match.group(1))}</code>')
+        cursor = match.end()
+    parts.append(html.escape(text[cursor:]))
+    return "".join(parts)
+
+
+def _render_code_language_label(language: str) -> str:
+    normalized = language.strip()
+    if not normalized:
+        return ""
+    label = {
+        "bash": "shell",
+        "sh": "shell",
+        "zsh": "shell",
+        "shell": "shell",
+        "yaml": "yaml",
+        "yml": "yaml",
+        "json": "json",
+        "python": "python",
+        "py": "python",
+    }.get(normalized.lower(), normalized)
+    return f'<div class="article-code-label">{html.escape(label)}</div>'
+
+
+def _render_block_html(block: ContentBlock, *, paragraph_start: bool = True) -> str:
+    if block.kind == "quote":
+        return f'<div class="article-quote">{_render_inline_text(block.text)}</div>'
+    if block.kind == "code":
+        label_html = _render_code_language_label(block.code_language)
+        return (
+            '<figure class="article-code-block">'
+            f'{label_html}'
+            f'<pre class="article-code-pre"><code>{html.escape(block.text)}</code></pre>'
+            '</figure>'
+        )
     paragraph_class = "article-p article-p-start" if paragraph_start else "article-p article-p-continue"
-    return f'<p class="{paragraph_class}">{escaped}</p>'
+    return f'<p class="{paragraph_class}">{_render_inline_text(block.text)}</p>'
 
 
 def _collapse_paragraph_blocks(blocks: list) -> list:
@@ -136,11 +174,7 @@ def _collapse_paragraph_blocks(blocks: list) -> list:
             and collapsed[-1].source_id == block.source_id
         ):
             previous = collapsed[-1]
-            collapsed[-1] = ContentBlock(
-                previous.kind,
-                previous.text + block.text,
-                previous.source_id,
-            )
+            collapsed[-1] = previous.with_text(previous.text + block.text)
             continue
         collapsed.append(block)
     return collapsed
@@ -163,7 +197,10 @@ def _render_body_page(
     seen_sources: set[int] = set()
     for index, block in enumerate(_collapse_paragraph_blocks(blocks)):
         if block.kind == "quote":
-            parts.append(_render_block_html(block.kind, block.text))
+            parts.append(_render_block_html(block))
+            continue
+        if block.kind == "code":
+            parts.append(_render_block_html(block))
             continue
 
         paragraph_start = True
@@ -172,7 +209,7 @@ def _render_body_page(
         elif index == 0 and continues_paragraph:
             paragraph_start = False
         seen_sources.add(block.source_id)
-        parts.append(_render_block_html(block.kind, block.text, paragraph_start=paragraph_start))
+        parts.append(_render_block_html(block, paragraph_start=paragraph_start))
 
     header_html = f'<div class="frame-header">{html.escape(header)}</div>' if show_frame_header else ""
     title_html = (

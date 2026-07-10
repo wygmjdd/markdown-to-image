@@ -9,7 +9,9 @@ from markdown_to_image.browser import launch_browser
 from markdown_to_image.parser import ContentBlock
 from markdown_to_image.paginator import (
     _merge_adjacent_blocks,
+    block_char_count,
     iter_text_pieces,
+    split_code_lines,
     split_clauses,
     split_sentences,
 )
@@ -39,9 +41,14 @@ _BODY_FITS_JS = f"""() => {{
     const safeBottom = bodyRect.bottom - paddingBottom;
     const firstRect = blocks[0].getBoundingClientRect();
     const lastRect = blocks[blocks.length - 1].getBoundingClientRect();
+    const hasClippedBlock = blocks.some((block) => (
+        block.scrollHeight > block.clientHeight + {_FIT_TOLERANCE_PX}
+        || block.scrollWidth > block.clientWidth + {_FIT_TOLERANCE_PX}
+    ));
 
     return (
-        firstRect.top >= safeTop - {_FIT_TOLERANCE_PX}
+        !hasClippedBlock
+        && firstRect.top >= safeTop - {_FIT_TOLERANCE_PX}
         && lastRect.bottom <= safeBottom + {_FIT_TOLERANCE_PX}
     );
 }}"""
@@ -50,7 +57,13 @@ RenderPageHtml = Callable[[list[ContentBlock], int, int, list[list[ContentBlock]
 
 
 def _clone(block: ContentBlock, text: str) -> ContentBlock:
-    return ContentBlock(block.kind, text, block.source_id)
+    return block.with_text(text)
+
+
+def _join_block_text(left: ContentBlock, right: ContentBlock) -> str:
+    if left.kind == "code":
+        return f"{left.text.rstrip()}\n{right.text.lstrip()}".strip("\n")
+    return left.text + right.text
 
 
 def _same_source(left: ContentBlock, right: ContentBlock) -> bool:
@@ -59,14 +72,14 @@ def _same_source(left: ContentBlock, right: ContentBlock) -> bool:
 
 def _normalize_sources(blocks: list[ContentBlock]) -> list[ContentBlock]:
     return [
-        ContentBlock(block.kind, block.text.strip(), index)
+        block.with_text(block.text.strip(), index)
         for index, block in enumerate(blocks)
         if block.text.strip()
     ]
 
 
 def _page_char_count(page: list[ContentBlock]) -> int:
-    return len("".join(block.text.strip() for block in _merge_adjacent_blocks(page)))
+    return sum(block_char_count(block) for block in _merge_adjacent_blocks(page))
 
 
 def _within_char_limit(page: list[ContentBlock], max_chars: int) -> bool:
@@ -76,7 +89,7 @@ def _within_char_limit(page: list[ContentBlock], max_chars: int) -> bool:
 def _page_with_piece(page: list[ContentBlock], piece: ContentBlock) -> list[ContentBlock]:
     probe = list(page)
     if probe and _same_source(probe[-1], piece):
-        probe[-1] = _clone(probe[-1], probe[-1].text + piece.text)
+        probe[-1] = _clone(probe[-1], _join_block_text(probe[-1], piece))
     else:
         probe.append(piece)
     return probe
@@ -125,6 +138,8 @@ def _split_leading_chars(text: str) -> tuple[str, str] | None:
 
 
 def _split_first_sentence(block: ContentBlock) -> tuple[ContentBlock, ContentBlock] | None:
+    if block.kind == "code":
+        return None
     sentences = split_sentences(block.text)
     if len(sentences) <= 1:
         return None
@@ -136,6 +151,8 @@ def _split_first_sentence(block: ContentBlock) -> tuple[ContentBlock, ContentBlo
 
 
 def _split_first_clause(block: ContentBlock) -> tuple[ContentBlock, ContentBlock] | None:
+    if block.kind == "code":
+        return None
     clauses = split_clauses(block.text)
     if len(clauses) <= 1:
         return None
@@ -147,6 +164,8 @@ def _split_first_clause(block: ContentBlock) -> tuple[ContentBlock, ContentBlock
 
 
 def _split_first_chunk(block: ContentBlock) -> tuple[ContentBlock, ContentBlock] | None:
+    if block.kind == "code":
+        return None
     split = _split_leading_chars(block.text)
     if split is None:
         return None
@@ -168,6 +187,10 @@ def _leading_splits(block: ContentBlock) -> list[tuple[ContentBlock, ContentBloc
 
 
 def _split_unit(block: ContentBlock, max_chars: int) -> list[ContentBlock]:
+    if block.kind == "code":
+        pieces = split_code_lines(block.text, max_chars)
+        return [_clone(block, piece) for piece in pieces] if len(pieces) > 1 else [block]
+
     pieces = iter_text_pieces(block.text, max_chars)
     if len(pieces) > 1:
         return [_clone(block, piece) for piece in pieces if piece.strip()]
@@ -253,7 +276,7 @@ def _peel_trailing_piece(block: ContentBlock) -> tuple[ContentBlock | None, Cont
 
 def _prepend_piece(page: list[ContentBlock], piece: ContentBlock) -> list[ContentBlock]:
     if page and _same_source(piece, page[0]):
-        return [_clone(piece, piece.text + page[0].text), *page[1:]]
+        return [_clone(piece, _join_block_text(piece, page[0])), *page[1:]]
     return [piece, *page]
 
 
@@ -270,6 +293,8 @@ def _pull_prefix_from_next(
         return None
 
     first = next_page[0]
+    if first.kind == "code":
+        return None
     text = first.text
     best: tuple[list[ContentBlock], list[ContentBlock]] | None = None
     max_end = min(len(text), _CHAR_CHUNK)

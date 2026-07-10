@@ -14,6 +14,11 @@
   --quote-surface: rgba(166, 90, 58, 0.075);
   --quote-rule: rgba(166, 90, 58, 0.34);
   --quote-ink: #332c27;
+  --code-surface: #f6f1ea;
+  --code-rule: rgba(63, 107, 100, 0.22);
+  --code-rail: #3f6b64;
+  --code-ink: #26312e;
+  --code-muted: #68756f;
   --radius-frame: 20px;
   --radius-card: 16px;
 }
@@ -104,6 +109,10 @@
   min-height: 0;
 }
 
+.article-body-text > * {
+  flex: 0 0 auto;
+}
+
 .article-p {
   font-size: 33px;
   line-height: 1.86;
@@ -119,6 +128,19 @@
 
 .article-p-continue {
   text-indent: 0;
+}
+
+.article-inline-code {
+  display: inline;
+  padding: 0 0.18em;
+  border: 1px solid rgba(63, 107, 100, 0.18);
+  border-radius: 6px;
+  background: rgba(63, 107, 100, 0.08);
+  font-family: "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", monospace;
+  font-size: 0.86em;
+  color: var(--code-ink);
+  letter-spacing: 0;
+  white-space: break-spaces;
 }
 
 .article-quote {
@@ -147,6 +169,56 @@
   width: 3px;
   border-radius: 999px;
   background: var(--quote-rule);
+}
+
+.article-code-block {
+  position: relative;
+  margin: 0;
+  padding: 20px 22px 22px 34px;
+  border: 1px solid var(--code-rule);
+  border-radius: 12px;
+  background: var(--code-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 252, 247, 0.74);
+  overflow: visible;
+}
+
+.article-code-block::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 18px;
+  bottom: 18px;
+  width: 4px;
+  border-radius: 999px;
+  background: var(--code-rail);
+}
+
+.article-code-label {
+  margin: 0 0 12px;
+  font-family: "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", monospace;
+  font-size: 18px;
+  line-height: 1.2;
+  color: var(--code-muted);
+  letter-spacing: 0;
+}
+
+.article-code-pre {
+  margin: 0;
+  font-family: "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", monospace;
+  font-size: 22px;
+  line-height: 1.58;
+  color: var(--code-ink);
+  letter-spacing: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  tab-size: 2;
+  -webkit-font-smoothing: antialiased;
+}
+
+.article-code-pre code {
+  font: inherit;
+  color: inherit;
 }
 
 /* --- X four-image article mode --- */

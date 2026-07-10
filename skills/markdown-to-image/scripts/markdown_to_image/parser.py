@@ -22,6 +22,7 @@ _IMAGE_MARKDOWN_BLOCK_RE = re.compile(
     r'^!\[([^\]]*)\]\((\S+?)(?:\s+["\'][^"\']*["\'])?\)$'
 )
 _FIGURE_HTML_RE = re.compile(r"<figure\b", re.IGNORECASE)
+_FENCE_CHARS = ("`", "~")
 _CTA_BLOCK_RE = re.compile(
     r'\n*<div class="article-follow-cta">.*?</div>\s*',
     re.DOTALL,
@@ -98,11 +99,22 @@ def strip_trailing_promo_lines(body: str) -> str:
 
 @dataclass(frozen=True)
 class ContentBlock:
-    kind: Literal["paragraph", "quote", "image"]
+    kind: Literal["paragraph", "quote", "image", "code"]
     text: str
     source_id: int = 0
     image_src: str = ""
     image_alt: str = ""
+    code_language: str = ""
+
+    def with_text(self, text: str, source_id: int | None = None) -> "ContentBlock":
+        return ContentBlock(
+            self.kind,
+            text,
+            self.source_id if source_id is None else source_id,
+            self.image_src,
+            self.image_alt,
+            self.code_language,
+        )
 
 
 @dataclass
@@ -115,7 +127,50 @@ class ParsedArticle:
 
 def strip_inline_markdown_links(text: str) -> str:
     """Replace [anchor](url) with anchor text only."""
-    return _INLINE_MARKDOWN_LINK_RE.sub(r"\1", text)
+    lines = text.splitlines()
+    out: list[str] = []
+    index = 0
+    in_fence = False
+    fence_char = ""
+    fence_len = 0
+
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+
+        if in_fence:
+            out.append(line)
+            if _is_code_fence_end(stripped, fence_char, fence_len):
+                in_fence = False
+            index += 1
+            continue
+
+        fence_start = _parse_code_fence_start(stripped)
+        if fence_start is not None:
+            fence_char, fence_len, _language = fence_start
+            in_fence = True
+            out.append(line)
+            index += 1
+            continue
+
+        if _is_indented_code_line(line):
+            while index < len(lines):
+                current = lines[index]
+                if _is_indented_code_line(current):
+                    out.append(current)
+                    index += 1
+                    continue
+                if not current.strip() and _next_nonblank_line_is_indented_code(lines, index):
+                    out.append(current)
+                    index += 1
+                    continue
+                break
+            continue
+
+        out.append(_INLINE_MARKDOWN_LINK_RE.sub(r"\1", line))
+        index += 1
+
+    return "\n".join(out)
 
 
 def strip_body_for_slides(body: str) -> str:
@@ -183,11 +238,60 @@ def _parse_markdown_image_line(line: str) -> ContentBlock | None:
     return ContentBlock("image", alt, image_src=src.strip(), image_alt=alt)
 
 
-def _starts_special_block(stripped: str) -> bool:
+def _parse_code_fence_start(stripped: str) -> tuple[str, int, str] | None:
+    if not stripped or stripped[0] not in _FENCE_CHARS:
+        return None
+    fence_char = stripped[0]
+    fence_len = 0
+    while fence_len < len(stripped) and stripped[fence_len] == fence_char:
+        fence_len += 1
+    if fence_len < 3:
+        return None
+    info = stripped[fence_len:].strip()
+    language = info.split(None, 1)[0].strip() if info else ""
+    return fence_char, fence_len, language
+
+
+def _is_code_fence_end(stripped: str, fence_char: str, fence_len: int) -> bool:
+    if not stripped.startswith(fence_char * fence_len):
+        return False
+    return set(stripped).issubset({fence_char})
+
+
+def _is_indented_code_line(line: str) -> bool:
+    return line.startswith("    ") or line.startswith("\t")
+
+
+def _strip_code_indent(line: str) -> str:
+    if line.startswith("\t"):
+        return line[1:]
+    if line.startswith("    "):
+        return line[4:]
+    return line
+
+
+def _clean_code_text(lines: list[str]) -> str:
+    text = "\n".join(line.rstrip().replace("\u00a0", " ") for line in lines)
+    return text.strip("\n")
+
+
+def _next_nonblank_line_is_indented_code(lines: list[str], index: int) -> bool:
+    probe = index + 1
+    while probe < len(lines):
+        if lines[probe].strip():
+            return _is_indented_code_line(lines[probe])
+        probe += 1
+    return False
+
+
+def _starts_special_block(line: str) -> bool:
+    stripped = line.strip()
     return (
         stripped.startswith(">")
         or stripped.lower().startswith("<figure")
         or _parse_markdown_image_line(stripped) is not None
+        or _parse_code_fence_start(stripped) is not None
+        or _is_indented_code_line(line)
     )
 
 
@@ -215,6 +319,35 @@ def parse_body_blocks(body: str) -> list[ContentBlock]:
                     break
             blocks.append(ContentBlock("quote", "\n".join(quote_lines).strip()))
             continue
+        fence_start = _parse_code_fence_start(stripped)
+        if fence_start is not None:
+            fence_char, fence_len, language = fence_start
+            code_lines: list[str] = []
+            index += 1
+            while index < len(lines):
+                current = lines[index]
+                if _is_code_fence_end(current.strip(), fence_char, fence_len):
+                    index += 1
+                    break
+                code_lines.append(current)
+                index += 1
+            blocks.append(ContentBlock("code", _clean_code_text(code_lines), code_language=language))
+            continue
+        if _is_indented_code_line(line):
+            code_lines = []
+            while index < len(lines):
+                current = lines[index]
+                if _is_indented_code_line(current):
+                    code_lines.append(_strip_code_indent(current))
+                    index += 1
+                    continue
+                if not current.strip() and _next_nonblank_line_is_indented_code(lines, index):
+                    code_lines.append("")
+                    index += 1
+                    continue
+                break
+            blocks.append(ContentBlock("code", _clean_code_text(code_lines)))
+            continue
         markdown_image = _parse_markdown_image_line(stripped)
         if markdown_image is not None:
             blocks.append(markdown_image)
@@ -239,7 +372,7 @@ def parse_body_blocks(body: str) -> list[ContentBlock]:
             current_stripped = current.strip()
             if not current_stripped:
                 break
-            if _starts_special_block(current_stripped):
+            if _starts_special_block(current):
                 break
             paragraph_lines.append(current)
             index += 1

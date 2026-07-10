@@ -7,7 +7,7 @@ description: Generate social-media slide images from Markdown articles. Use when
 
 Turn a Markdown article into an ordered PNG slide series for social publishing.
 
-The bundled renderer is in `scripts/`. It parses frontmatter Markdown, strips inline links to anchor text, paginates body text with Chromium-measured fit, renders platform-specific slide sets, and can run QA for overflow.
+The bundled renderer is in `scripts/`. It parses frontmatter Markdown, strips inline links to anchor text, preserves inline code plus fenced/indented code blocks as readable code cards, paginates body text with Chromium-measured fit, renders platform-specific slide sets, and can run QA for overflow.
 
 ## Setup
 

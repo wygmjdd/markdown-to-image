@@ -21,6 +21,10 @@ QUOTE_FONT = 29
 QUOTE_LINE_HEIGHT = 1.78
 QUOTE_PADDING_VERTICAL = 24
 QUOTE_PADDING_HORIZONTAL = 42
+CODE_FONT = 22
+CODE_LINE_HEIGHT = 1.58
+CODE_PADDING_VERTICAL = 44
+CODE_PADDING_HORIZONTAL = 58
 BLOCK_GAP = 28
 DEFAULT_SPLIT_CHARS = 340
 
@@ -53,12 +57,31 @@ def _line_count(text: str, font_size: int, content_width: int = CONTENT_WIDTH) -
     return max(1, (len(stripped) + chars_per_line - 1) // chars_per_line)
 
 
+def _code_line_count(text: str, font_size: int, content_width: int = CONTENT_WIDTH) -> int:
+    lines = text.strip("\n").splitlines()
+    if not lines:
+        return 0
+    chars_per_line = max(1, int(content_width / (font_size * 0.62)))
+    total = 0
+    for line in lines:
+        visual_chars = max(1, len(line.rstrip()))
+        total += max(1, (visual_chars + chars_per_line - 1) // chars_per_line)
+    return total
+
+
 def estimate_block_height(block: ContentBlock) -> float:
     if block.kind == "quote":
         font_size = QUOTE_FONT
         line_height = QUOTE_LINE_HEIGHT
         padding = QUOTE_PADDING_VERTICAL
         content_width = CONTENT_WIDTH - QUOTE_PADDING_HORIZONTAL
+    elif block.kind == "code":
+        font_size = CODE_FONT
+        line_height = CODE_LINE_HEIGHT
+        padding = CODE_PADDING_VERTICAL
+        content_width = CONTENT_WIDTH - CODE_PADDING_HORIZONTAL
+        lines = _code_line_count(block.text, font_size, content_width)
+        return lines * font_size * line_height + padding
     else:
         font_size = PARAGRAPH_FONT
         line_height = PARAGRAPH_LINE_HEIGHT

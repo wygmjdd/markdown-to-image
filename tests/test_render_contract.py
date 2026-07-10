@@ -25,6 +25,20 @@ def _import_browser_paginator_module():
     return browser_paginator
 
 
+def _import_paginator_module():
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    from markdown_to_image import paginator
+
+    return paginator
+
+
+def _import_parser_module():
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    from markdown_to_image import parser
+
+    return parser
+
+
 def _import_cli_module():
     sys.path.insert(0, str(SCRIPTS_DIR))
     import render_markdown_to_image
@@ -82,6 +96,155 @@ def test_render_article_slides_from_standalone_manifest(tmp_path: Path) -> None:
     assert "](https://example.com)" not in slides[1][1]
     assert "引用内容" in slides[1][1]
     assert "把文章变成可以发布的图片组" in slides[-1][1]
+
+
+def test_parser_preserves_fenced_and_indented_code_blocks() -> None:
+    parser = _import_parser_module()
+
+    blocks = parser.parse_body_blocks(
+        "前文。\n\n"
+        "```bash\n"
+        "npx skills add -g https://github.com/wygmjdd/markdown-to-image --skill markdown-to-image\n"
+        "```\n\n"
+        "    # Codex\n"
+        "    npx skills add -g https://github.com/wygmjdd/markdown-to-image --skill markdown-to-image -a codex -y\n\n"
+        "后文。\n"
+    )
+
+    assert [block.kind for block in blocks] == ["paragraph", "code", "code", "paragraph"]
+    assert blocks[1].code_language == "bash"
+    assert blocks[1].text.startswith("npx skills add -g")
+    assert "```" not in blocks[1].text
+    assert blocks[2].text.splitlines()[0] == "# Codex"
+    assert blocks[2].text.splitlines()[1].startswith("npx skills add -g")
+
+
+def test_link_stripping_skips_code_blocks() -> None:
+    parser = _import_parser_module()
+
+    body = parser.strip_body_for_slides(
+        "正文里有一个[普通链接](https://example.com)。\n\n"
+        "```md\n"
+        "[代码里的链接](https://example.com/keep)\n"
+        "```\n\n"
+        "    echo '[缩进代码链接](https://example.com/keep-too)'\n"
+    )
+    blocks = parser.parse_body_blocks(body)
+
+    assert blocks[0].text == "正文里有一个普通链接。"
+    assert blocks[1].text == "[代码里的链接](https://example.com/keep)"
+    assert blocks[2].text == "echo '[缩进代码链接](https://example.com/keep-too)'"
+
+
+def test_code_pagination_keeps_comment_headers_with_commands() -> None:
+    paginator = _import_paginator_module()
+
+    pieces = paginator.split_code_lines(
+        "# Cursor\n"
+        "npx skills add -g repo --skill markdown-to-image -a cursor -y\n"
+        "# Codex\n"
+        "npx skills add -g repo --skill markdown-to-image -a codex -y\n"
+        "# Claude Code\n"
+        "npx skills add -g repo --skill markdown-to-image -a claude-code -y",
+        max_chars=42,
+    )
+
+    assert pieces == [
+        "# Cursor\nnpx skills add -g repo --skill markdown-to-image -a cursor -y",
+        "# Codex\nnpx skills add -g repo --skill markdown-to-image -a codex -y",
+        "# Claude Code\nnpx skills add -g repo --skill markdown-to-image -a claude-code -y",
+    ]
+
+
+def test_code_pagination_splits_oversized_single_lines() -> None:
+    paginator = _import_paginator_module()
+
+    pieces = paginator.split_code_lines("token=" + "a" * 1800, max_chars=340)
+
+    assert len(pieces) > 1
+    assert all(len(piece) < 900 for piece in pieces)
+    assert "".join(pieces) == "token=" + "a" * 1800
+
+
+def test_code_pagination_preserves_spaces_in_long_commands() -> None:
+    paginator = _import_paginator_module()
+    command = "cat input.txt " + " | ".join(f"grep part{index}" for index in range(120))
+
+    pieces = paginator.split_code_lines(command, max_chars=340)
+
+    assert len(pieces) > 1
+    assert "".join(pieces) == command
+
+
+def test_code_blocks_render_as_dedicated_code_cards(tmp_path: Path) -> None:
+    render = _import_render_module()
+
+    article_path = tmp_path / "article.md"
+    article_path.write_text(
+        "安装方式如下：\n\n"
+        "    # Cursor\n"
+        "    npx skills add -g https://github.com/wygmjdd/markdown-to-image --skill markdown-to-image -a cursor -y\n\n"
+        "> Cursor 使用符号`/`引出 Skill，Codex 使用符号`$`。\n",
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "source": str(article_path),
+                "original_title": "代码块测试",
+                "social_title": "代码块应该像代码",
+                "cta_line1": "结束语。",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    slides, _ = render.render_article_slides(manifest_path)
+    rendered = "\n".join(html for _, html in slides)
+
+    assert 'class="article-code-block"' in rendered
+    assert '<pre class="article-code-pre"><code># Cursor' in rendered
+    assert "npx skills add -g https://github.com/wygmjdd/markdown-to-image" in rendered
+    assert '<code class="article-inline-code">/</code>' in rendered
+    assert '<code class="article-inline-code">$</code>' in rendered
+
+
+def test_long_single_line_code_block_renders(tmp_path: Path) -> None:
+    render = _import_render_module()
+
+    article_path = tmp_path / "article.md"
+    long_line = "token=" + "a" * 1800
+    article_path.write_text(
+        "前文。\n\n"
+        "```txt\n"
+        f"{long_line}\n"
+        "```\n\n"
+        "后文。\n",
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "source": str(article_path),
+                "original_title": "长代码测试",
+                "social_title": "长代码也能渲染",
+                "cta_line1": "结束语。",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    slides, _ = render.render_article_slides(manifest_path)
+    rendered = "\n".join(html for _, html in slides)
+
+    assert "token=" in rendered
+    assert "后文。" in rendered
 
 
 def test_manifest_uses_social_title(tmp_path: Path) -> None:

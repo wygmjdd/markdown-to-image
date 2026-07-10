@@ -51,25 +51,32 @@ def _peel_last_piece(page: list[ContentBlock]) -> ContentBlock | None:
         return None
 
     last = page[-1]
+    if last.kind == "code":
+        lines = last.text.strip("\n").splitlines()
+        if len(lines) > 1:
+            page[-1] = last.with_text("\n".join(lines[:-1]))
+            return last.with_text(lines[-1])
+        return page.pop()
+
     sentences = split_sentences(last.text)
     if len(sentences) > 1:
         moved_text = sentences[-1]
         remainder = "".join(sentences[:-1])
         if remainder.strip():
-            page[-1] = ContentBlock(last.kind, remainder, last.source_id)
+            page[-1] = last.with_text(remainder)
         else:
             page.pop()
-        return ContentBlock(last.kind, moved_text, last.source_id)
+        return last.with_text(moved_text)
 
     clauses = split_clauses(last.text)
     if len(clauses) > 1:
         moved_text = clauses[-1]
         remainder = "".join(clauses[:-1])
         if remainder.strip():
-            page[-1] = ContentBlock(last.kind, remainder, last.source_id)
+            page[-1] = last.with_text(remainder)
         else:
             page.pop()
-        return ContentBlock(last.kind, moved_text, last.source_id)
+        return last.with_text(moved_text)
 
     return page.pop()
 
@@ -158,6 +165,8 @@ def _pull_max_fit_prefix(
         return False
 
     first = next_page[0]
+    if first.kind == "code":
+        return False
     text = first.text.strip()
     if not text:
         return False
@@ -183,7 +192,7 @@ def _pull_max_fit_prefix(
             accumulated = trial
             continue
 
-        moved = ContentBlock(first.kind, trial_prefix, first.source_id)
+        moved = first.with_text(trial_prefix)
         candidate = list(page)
         _append_flow_piece(candidate, moved)
         candidate_html = render_page_html(candidate, probe_total, page_index, all_pages)
@@ -199,10 +208,10 @@ def _pull_max_fit_prefix(
     best_prefix = text[:best_raw_len].strip()
     remainder = text[best_raw_len:].strip()
 
-    moved = ContentBlock(first.kind, best_prefix, first.source_id)
+    moved = first.with_text(best_prefix)
     _append_flow_piece(page, moved)
     if remainder:
-        next_page[0] = ContentBlock(first.kind, remainder, first.source_id)
+        next_page[0] = first.with_text(remainder)
     else:
         next_page.pop(0)
     return True
