@@ -148,7 +148,36 @@ def _render_code_language_label(language: str) -> str:
     return f'<div class="article-code-label">{html.escape(label)}</div>'
 
 
-def _render_block_html(block: ContentBlock, *, paragraph_start: bool = True) -> str:
+def _render_inline_image_html(
+    block: ContentBlock,
+    source_path: Path,
+    project_root: Path | None,
+) -> str:
+    image_path = _resolve_article_image_path(block.image_src, source_path, project_root)
+    caption = block.text.strip()
+    alt = block.image_alt.strip() or caption or "文章配图"
+    caption_html = (
+        f'<figcaption class="article-inline-image-caption">{html.escape(caption)}</figcaption>'
+        if caption
+        else ""
+    )
+    return (
+        '<figure class="article-inline-image">'
+        '<div class="article-inline-image-media">'
+        f'<img class="article-inline-image-img" src="{_image_data_url(image_path)}" alt="{html.escape(alt)}" />'
+        '</div>'
+        f'{caption_html}'
+        '</figure>'
+    )
+
+
+def _render_block_html(
+    block: ContentBlock,
+    *,
+    paragraph_start: bool = True,
+    source_path: Path | None = None,
+    project_root: Path | None = None,
+) -> str:
     if block.kind == "quote":
         return f'<div class="article-quote">{_render_inline_text(block.text)}</div>'
     if block.kind == "code":
@@ -159,6 +188,10 @@ def _render_block_html(block: ContentBlock, *, paragraph_start: bool = True) -> 
             f'<pre class="article-code-pre"><code>{html.escape(block.text)}</code></pre>'
             '</figure>'
         )
+    if block.kind == "image":
+        if source_path is None:
+            raise ValueError("Inline article image rendering requires the source article path.")
+        return _render_inline_image_html(block, source_path, project_root)
     paragraph_class = "article-p article-p-start" if paragraph_start else "article-p article-p-continue"
     return f'<p class="{paragraph_class}">{_render_inline_text(block.text)}</p>'
 
@@ -192,6 +225,8 @@ def _render_body_page(
     first_page_title: str = "",
     show_frame_header: bool = True,
     slide_height: int = _DEFAULT_SLIDE_HEIGHT,
+    source_path: Path | None = None,
+    project_root: Path | None = None,
 ) -> str:
     parts: list[str] = []
     seen_sources: set[int] = set()
@@ -201,6 +236,9 @@ def _render_body_page(
             continue
         if block.kind == "code":
             parts.append(_render_block_html(block))
+            continue
+        if block.kind == "image":
+            parts.append(_render_block_html(block, source_path=source_path, project_root=project_root))
             continue
 
         paragraph_start = True
@@ -452,6 +490,8 @@ def _render_x_probe_page(
     header: str,
     nickname: str,
     slide_height: int,
+    source_path: Path | None,
+    project_root: Path | None,
 ):
     def _probe(
         blocks: list[ContentBlock],
@@ -472,29 +512,76 @@ def _render_x_probe_page(
             first_page_title=header if page_index == 0 else "",
             show_frame_header=False,
             slide_height=slide_height,
+            source_path=source_path,
+            project_root=project_root,
         )
 
     return _probe
 
 
 def _paginate_x_body_pages(
-    text_blocks: list[ContentBlock],
+    body_blocks: list[ContentBlock],
     header: str,
     nickname: str,
+    source_path: Path | None,
+    project_root: Path | None,
+    *,
+    prefer_inline_image_fit: bool = False,
 ) -> tuple[list[list[ContentBlock]], int]:
-    max_chars = max(_text_char_count(text_blocks), 1)
+    max_chars = max(_text_char_count(body_blocks), 1)
 
     def paginate_at_height(height: int) -> list[list[ContentBlock]]:
         return paginate_blocks_with_browser(
-            text_blocks,
-            _render_x_probe_page(header, nickname, height),
+            body_blocks,
+            _render_x_probe_page(header, nickname, height, source_path, project_root),
             max_chars=max_chars,
         )
+
+    def improve_inline_image_fit(
+        base_pages: list[list[ContentBlock]],
+        base_height: int,
+    ) -> tuple[list[list[ContentBlock]], int]:
+        if (
+            not prefer_inline_image_fit
+            or not any(block.kind == "image" for block in body_blocks)
+            or len(base_pages) <= 1
+        ):
+            return base_pages, base_height
+
+        target_count = len(base_pages) - 1
+        low_height = base_height
+        high_height = base_height
+        candidate_pages = base_pages
+        while len(candidate_pages) > target_count and high_height < _X_MAX_SLIDE_HEIGHT:
+            low_height = high_height
+            high_height = min(
+                _X_MAX_SLIDE_HEIGHT,
+                max(high_height + 160, int(high_height * _X_HEIGHT_GROWTH)),
+            )
+            candidate_pages = paginate_at_height(high_height)
+
+        if len(candidate_pages) > target_count:
+            return base_pages, base_height
+
+        best_pages = candidate_pages
+        best_height = high_height
+        left = low_height + 1
+        right = high_height - 1
+        while left <= right:
+            mid = (left + right) // 2
+            mid_pages = paginate_at_height(mid)
+            if len(mid_pages) <= target_count:
+                best_pages = mid_pages
+                best_height = mid
+                right = mid - 1
+            else:
+                left = mid + 1
+        return best_pages, best_height
 
     low = _DEFAULT_SLIDE_HEIGHT
     pages = paginate_at_height(low)
     if len(pages) <= _X_MAX_BODY_SLIDES:
-        return pages, low
+        return improve_inline_image_fit(pages, low)
 
     high = low
     while len(pages) > _X_MAX_BODY_SLIDES and high < _X_MAX_SLIDE_HEIGHT:
@@ -525,14 +612,39 @@ def _paginate_x_body_pages(
     return best_pages, best_height
 
 
-def _render_x_article_slides(article: Any, manifest: dict[str, Any]) -> list[tuple[str, str]]:
+def _truthy_manifest_value(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
+def _x_includes_article_images(manifest: dict[str, Any]) -> bool:
+    return _truthy_manifest_value(manifest.get("x_include_images"))
+
+
+def _render_x_article_slides(
+    article: Any,
+    manifest: dict[str, Any],
+    source_path: Path,
+    project_root: Path | None,
+) -> list[tuple[str, str]]:
     header = _social_title(manifest)
     nickname = str(manifest.get("nickname") or "")
-    text_blocks = [block for block in article.blocks if block.kind != "image"]
-    if not text_blocks:
-        raise ValueError("X platform render needs at least one text or quote block; image-only articles are unsupported.")
+    include_images = _x_includes_article_images(manifest)
+    body_blocks = list(article.blocks) if include_images else [block for block in article.blocks if block.kind != "image"]
+    if not body_blocks:
+        raise ValueError("X platform render needs at least one renderable body block.")
 
-    pages, slide_height = _paginate_x_body_pages(text_blocks, header, nickname)
+    pages, slide_height = _paginate_x_body_pages(
+        body_blocks,
+        header,
+        nickname,
+        source_path if include_images else None,
+        project_root if include_images else None,
+        prefer_inline_image_fit=include_images,
+    )
     slides: list[tuple[str, str]] = []
     previous_text_page: list[ContentBlock] | None = None
     body_total = len(pages)
@@ -557,6 +669,8 @@ def _render_x_article_slides(article: Any, manifest: dict[str, Any]) -> list[tup
             first_page_title=header if index == 1 else "",
             show_frame_header=False,
             slide_height=slide_height,
+            source_path=source_path if include_images else None,
+            project_root=project_root if include_images else None,
         )
         slides.append((f"{index:02d}.png", html_doc))
         previous_text_page = blocks
@@ -584,7 +698,7 @@ def render_article_slides(manifest_path: Path) -> tuple[list[tuple[str, str]], P
         raise ValueError(f"No content blocks after parsing: {source_path}")
 
     if manifest["platform"] == "x":
-        return _render_x_article_slides(article, manifest), manifest_dir
+        return _render_x_article_slides(article, manifest, source_path, project_root), manifest_dir
 
     max_chars = int(manifest.get("chars_per_slide", 340))
 

@@ -74,7 +74,7 @@ def _normalize_sources(blocks: list[ContentBlock]) -> list[ContentBlock]:
     return [
         block.with_text(block.text.strip(), index)
         for index, block in enumerate(blocks)
-        if block.text.strip()
+        if block.text.strip() or (block.kind == "image" and block.image_src.strip())
     ]
 
 
@@ -138,7 +138,7 @@ def _split_leading_chars(text: str) -> tuple[str, str] | None:
 
 
 def _split_first_sentence(block: ContentBlock) -> tuple[ContentBlock, ContentBlock] | None:
-    if block.kind == "code":
+    if block.kind in {"code", "image"}:
         return None
     sentences = split_sentences(block.text)
     if len(sentences) <= 1:
@@ -151,7 +151,7 @@ def _split_first_sentence(block: ContentBlock) -> tuple[ContentBlock, ContentBlo
 
 
 def _split_first_clause(block: ContentBlock) -> tuple[ContentBlock, ContentBlock] | None:
-    if block.kind == "code":
+    if block.kind in {"code", "image"}:
         return None
     clauses = split_clauses(block.text)
     if len(clauses) <= 1:
@@ -164,7 +164,7 @@ def _split_first_clause(block: ContentBlock) -> tuple[ContentBlock, ContentBlock
 
 
 def _split_first_chunk(block: ContentBlock) -> tuple[ContentBlock, ContentBlock] | None:
-    if block.kind == "code":
+    if block.kind in {"code", "image"}:
         return None
     split = _split_leading_chars(block.text)
     if split is None:
@@ -187,6 +187,8 @@ def _leading_splits(block: ContentBlock) -> list[tuple[ContentBlock, ContentBloc
 
 
 def _split_unit(block: ContentBlock, max_chars: int) -> list[ContentBlock]:
+    if block.kind == "image":
+        return [block]
     if block.kind == "code":
         pieces = split_code_lines(block.text, max_chars)
         return [_clone(block, piece) for piece in pieces] if len(pieces) > 1 else [block]
@@ -293,7 +295,7 @@ def _pull_prefix_from_next(
         return None
 
     first = next_page[0]
-    if first.kind == "code":
+    if first.kind in {"code", "image"}:
         return None
     text = first.text
     best: tuple[list[ContentBlock], list[ContentBlock]] | None = None
@@ -511,7 +513,7 @@ def paginate_blocks_with_browser(
                 split_units = _split_unit(unit, max_chars)
                 if len(split_units) <= 1:
                     preview = unit.text[:80]
-                    raise ValueError(f"Text unit cannot fit on an empty body slide: {preview}")
+                    raise ValueError(f"Content unit cannot fit on an empty body slide: {preview}")
                 queue = split_units + queue
 
             if current:

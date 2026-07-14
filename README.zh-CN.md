@@ -113,6 +113,7 @@ cta_mapping:
 | `chars_per_slide` | 每张正文页默认最大字数。 |
 | `default_cta` | 没有命中分类映射时使用的默认 CTA 主题。 |
 | `cta_mapping` | 把文章 frontmatter 里的 `primary_category` 分类映射到 `reading`、`summary` 或 `life`。 |
+| `x_include_images` | 可选的 X 默认行为：把文章配图内嵌合成到四张正文图片里。 |
 
 内置 CTA 标签是：`reading` → `读书感悟`，`summary` → `总结复盘`，`life` → `生活分享`。
 
@@ -123,7 +124,7 @@ cta_mapping:
 | 平台 | 输出 |
 | --- | --- |
 | `rednote` | 当前小红书流程：封面、正文页、可选原文配图页、结尾 CTA。 |
-| `x` | 最多 4 张正文图，文件名为 `01.png` 到 `04.png`；没有封面页和结尾页。渲染器会按正文长度自动拉高图片，尽量把长文压进 4 张图里，并把选定的 `social_title` 放在 `01.png` 顶部。文章里的原始配图默认会被跳过，不占用 4 张图片额度。 |
+| `x` | 最多 4 张正文图，文件名为 `01.png` 到 `04.png`；没有封面页和结尾页。渲染器会按正文长度自动拉高图片，尽量把长文压进 4 张图里，并把选定的 `social_title` 放在 `01.png` 顶部。文章里的原始配图默认会被跳过，不占用 4 张图片额度；设置 `x_include_images: true` 后，会把原文配图以内嵌图文块合成进正文图片。 |
 
 ## Markdown 支持
 
@@ -302,6 +303,7 @@ post-caption.md
 | `bio` | 结束页上的短简介。 |
 | `chars_per_slide` | 每张正文页的最大正文字数，之后还会经过浏览器实际适配检查。默认 `340`。 |
 | `cover_base` | 可选封面背景图，通常为 `cover-base.png`，放在 `manifest.json` 同目录。 |
+| `x_include_images` | 仅 X 模式使用。设置为 `true` 后，把 Markdown/HTML 原文配图内嵌到 `01.png` 到 `04.png` 的正文图片里。 |
 
 更详细的 manifest 说明见 `skills/markdown-to-image/references/manifest.md`。
 

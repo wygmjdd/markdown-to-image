@@ -45,6 +45,7 @@ X manifest:
 - `bio`: Short bio shown on end slide.
 - `chars_per_slide`: Maximum body text characters per body slide before browser fit checks. Default: `340`.
 - `cover_base`: Optional background image beside the manifest, normally `cover-base.png`.
+- `x_include_images`: X-only boolean. When `true`, article image blocks are composited inline into the `01.png`-`04.png` body flow instead of being skipped.
 
 ## Stable Config
 
@@ -91,7 +92,7 @@ X writes up to four body images:
 - `02.png`, `03.png`, ...
 - `04.png` when needed
 
-X mode renders the chosen `social_title` inside `01.png`, skips cover/end slides, and ignores embedded article image blocks by default so the 4 image slots are reserved for text.
+X mode renders the chosen `social_title` inside `01.png`, skips cover/end slides, and ignores embedded article image blocks by default so the 4 image slots are reserved for text. Set `x_include_images: true` to render Markdown/HTML article images as inline figure blocks inside the body images.
 
 Upload files in filename order.
 

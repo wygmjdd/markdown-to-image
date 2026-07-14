@@ -803,6 +803,133 @@ def test_x_platform_skips_article_image_blocks_by_default(tmp_path: Path) -> Non
     assert "不会占用 X 图片额度" not in rendered
 
 
+def test_x_platform_can_inline_article_images_when_enabled(tmp_path: Path) -> None:
+    render = _import_render_module()
+    project_root = tmp_path / "site"
+    article_dir = project_root / "content"
+    image_dir = project_root / "static" / "images"
+    article_dir.mkdir(parents=True)
+    image_dir.mkdir(parents=True)
+    (image_dir / "photo.jpg").write_bytes(
+        (ROOT / "skills" / "markdown-to-image" / "examples" / "wygmjdd-article" / "images" / "001.jpg").read_bytes()
+    )
+    article_path = article_dir / "article.md"
+    article_path.write_text(
+        "第一段正文，图片之前还有文字。\n\n"
+        '<figure><img src="/images/photo.jpg" alt="现场照片" />'
+        "<figcaption>电影广告很多，而看电影竟然真的送加多宝</figcaption></figure>\n\n"
+        "第二段正文，图片之后继续讲述。\n",
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "platform": "x",
+                "source": "content/article.md",
+                "project_root": str(project_root),
+                "original_title": "X 内嵌图片测试",
+                "social_title": "X 可以把图片合成进正文",
+                "x_include_images": True,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    slides, _ = render.render_article_slides(manifest_path)
+    rendered = "\n".join(html for _, html in slides)
+
+    assert [name for name, _ in slides] == ["01.png"]
+    assert "第一段正文" in rendered
+    assert "第二段正文" in rendered
+    assert "article-inline-image" in rendered
+    assert "电影广告很多" in rendered
+    assert "data:image/jpeg;base64," in rendered
+    assert '<div class="article-photo-card">' not in rendered
+
+
+def test_x_include_images_can_come_from_project_config(tmp_path: Path) -> None:
+    render = _import_render_module()
+    project_root = tmp_path / "site"
+    article_dir = project_root / "content"
+    image_dir = project_root / "static" / "images"
+    article_dir.mkdir(parents=True)
+    image_dir.mkdir(parents=True)
+    (image_dir / "photo.jpg").write_bytes(
+        (ROOT / "skills" / "markdown-to-image" / "examples" / "wygmjdd-article" / "images" / "001.jpg").read_bytes()
+    )
+    (project_root / "markdown-to-image.config.yml").write_text(
+        "platform: x\n"
+        "x_include_images: true\n",
+        encoding="utf-8",
+    )
+    article_path = article_dir / "article.md"
+    article_path.write_text(
+        "配置前文。\n\n"
+        '![配置图片](/images/photo.jpg)\n\n'
+        "配置后文。\n",
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "source": "content/article.md",
+                "project_root": str(project_root),
+                "original_title": "配置图片测试",
+                "social_title": "配置可以默认开启 X 内嵌图",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    slides, _ = render.render_article_slides(manifest_path)
+    rendered = "\n".join(html for _, html in slides)
+
+    assert [name for name, _ in slides] == ["01.png"]
+    assert "配置前文" in rendered
+    assert "配置后文" in rendered
+    assert "article-inline-image" in rendered
+    assert "data:image/jpeg;base64," in rendered
+
+
+def test_x_inline_images_can_grow_height_to_reduce_sparse_image_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    render = _import_render_module()
+    parser = _import_parser_module()
+    blocks = [
+        parser.ContentBlock("paragraph", "图片前正文。" * 20),
+        parser.ContentBlock("image", "图片说明", image_src="photo.jpg"),
+        parser.ContentBlock("paragraph", "图片后正文。" * 20),
+    ]
+
+    def fake_paginate_blocks_with_browser(body_blocks, render_page_html, *, max_chars):
+        html = render_page_html([body_blocks[0]], 1, 0, [[body_blocks[0]]])
+        marker = "--slide-height: "
+        slide_height = int(html.split(marker, 1)[1].split("px", 1)[0])
+        if slide_height < 1600:
+            return [[body_blocks[0]], [body_blocks[1]], [body_blocks[2]], [body_blocks[2].with_text("尾段")]]
+        return [[body_blocks[0], body_blocks[1]], [body_blocks[2]], [body_blocks[2].with_text("尾段")]]
+
+    monkeypatch.setattr(render, "paginate_blocks_with_browser", fake_paginate_blocks_with_browser)
+
+    pages, slide_height = render._paginate_x_body_pages(
+        blocks,
+        "标题",
+        "作者",
+        Path("article.md"),
+        None,
+        prefer_inline_image_fit=True,
+    )
+
+    assert slide_height == 1600
+    assert len(pages) == 3
+    assert pages[0][1].kind == "image"
+
+
 def test_project_config_can_supply_default_x_platform(tmp_path: Path) -> None:
     render = _import_render_module()
     article_path = tmp_path / "article.md"

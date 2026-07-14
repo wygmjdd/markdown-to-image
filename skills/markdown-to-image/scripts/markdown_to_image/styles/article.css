@@ -221,6 +221,46 @@
   color: inherit;
 }
 
+.article-inline-image {
+  width: 100%;
+  margin: 4px 0 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.article-inline-image-media {
+  width: 100%;
+  max-height: min(520px, calc(var(--slide-height, 1440px) * 0.42));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 10px;
+  background: transparent;
+}
+
+.article-inline-image-img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(520px, calc(var(--slide-height, 1440px) * 0.42));
+  object-fit: contain;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px rgba(42, 38, 34, 0.08);
+}
+
+.article-inline-image-caption {
+  margin-top: 10px;
+  font-size: 21px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+  text-align: center;
+  letter-spacing: 0;
+}
+
 /* --- X four-image article mode --- */
 .slide-x .slide-body {
   padding-top: 40px;

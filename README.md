@@ -113,6 +113,7 @@ Use config for values that should stay stable across articles:
 | `chars_per_slide` | Default body text limit per body slide. |
 | `default_cta` | Fallback CTA theme when no category mapping matches. |
 | `cta_mapping` | Maps article `primary_category` slugs to `reading`, `summary`, or `life`. |
+| `x_include_images` | Optional X default for compositing article images inline into the four body images. |
 
 The built-in CTA labels are `reading` → `读书感悟`, `summary` → `总结复盘`, and `life` → `生活分享`.
 
@@ -123,7 +124,7 @@ Use the per-article `manifest.json` for values that change per article: `platfor
 | Platform | Output |
 | --- | --- |
 | `rednote` | Current RedNote flow: cover, body slides, optional original image slides, and end CTA. |
-| `x` | Up to 4 body images named `01.png` through `04.png`; no cover or end slide. The renderer increases image height as needed and puts the chosen `social_title` at the top of `01.png`. Embedded article images are skipped by default so the 4 image slots are reserved for text. |
+| `x` | Up to 4 body images named `01.png` through `04.png`; no cover or end slide. The renderer increases image height as needed and puts the chosen `social_title` at the top of `01.png`. Embedded article images are skipped by default so the 4 image slots are reserved for text; set `x_include_images: true` to composite article images inline with the body text. |
 
 ## Markdown Support
 
@@ -302,6 +303,7 @@ Common optional fields:
 | `bio` | Short end-slide bio. |
 | `chars_per_slide` | Maximum body text characters per body slide before browser fit checks. Default: `340`. |
 | `cover_base` | Optional background image beside `manifest.json`, usually `cover-base.png`. |
+| `x_include_images` | X-only. Set `true` to render Markdown/HTML article images inline inside the `01.png`-`04.png` body images. |
 
 More detail: `skills/markdown-to-image/references/manifest.md`.
 

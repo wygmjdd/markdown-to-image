@@ -446,6 +446,7 @@ def merge_manifest_defaults(manifest: dict[str, Any], config: dict[str, Any]) ->
     _set_default_if_blank(merged, "nickname", config)
     _set_default_if_blank(merged, "bio", config)
     _set_default_if_blank(merged, "chars_per_slide", config, 340)
+    _set_default_if_blank(merged, "x_include_images", config)
     return merged
 
 

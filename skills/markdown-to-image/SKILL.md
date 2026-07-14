@@ -34,7 +34,7 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.venv/playwright-browsers" \
 5. Write `manifest.json` beside the desired output images. Put stable identity fields in config when possible; use the manifest for per-article overrides.
    - RedNote: include `platform: "rednote"`, `cta_line1`, and optional cover settings.
    - X: include `platform: "x"`; omit `cta_line1` unless the user wants it for caption text.
-   - X mode renders only article text by default; embedded article images do not consume the 4 image slots.
+   - X mode renders only article text by default; embedded article images do not consume the 4 image slots unless `x_include_images: true` is set.
 6. Run the renderer:
 
 ```bash
@@ -98,6 +98,8 @@ The config controls defaults only. Manifest fields such as `platform`, `nickname
 
 - `rednote` (default): writes `01-cover.png`, body slides, and `NN-end.png`.
 - `x`: writes up to 4 body images named `01.png` through `04.png`; no cover or end slide. The renderer increases slide height as needed so long articles fit into the 4-image limit. The chosen `social_title` is rendered at the top of `01.png`.
+
+Set `x_include_images: true` when X output should composite Markdown/HTML article images into the body flow. Inline images are rendered inside the same `01.png`-`04.png` files, with surrounding text continuing before and after the image; they are not emitted as separate upload images.
 
 ## Cover Background
 
