@@ -657,7 +657,178 @@ def test_existing_cover_base_is_ignored_without_manifest_cover_field(tmp_path: P
 
     slides, _ = render.render_article_slides(manifest_path)
 
-    assert "background-image" not in slides[0][1]
+    assert '<div class="slide slide-cover">' in slides[0][1]
+
+
+def test_declared_cover_base_marks_cover_as_image_backed(tmp_path: Path) -> None:
+    render = _import_render_module()
+    article_path = tmp_path / "article.md"
+    article_path.write_text("正文内容。\n", encoding="utf-8")
+    (tmp_path / "background.png").write_bytes(b"png")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "source": str(article_path),
+                "original_title": "封面背景测试",
+                "social_title": "声明的背景图应启用轻蒙版",
+                "cta_line1": "结束语。",
+                "cover_base": "background.png",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    slides, _ = render.render_article_slides(manifest_path)
+
+    assert (
+        '<div class="slide slide-cover has-background-image" style="background-image:'
+        in slides[0][1]
+    )
+
+
+def test_cover_render_qa_rejects_low_contrast_title(monkeypatch, tmp_path: Path) -> None:
+    qa = _import_qa_module()
+    low_contrast_cover = """
+    <!doctype html>
+    <html>
+      <head>
+        <style>
+          html, body { margin: 0; }
+          .slide {
+            position: relative;
+            width: 1080px;
+            height: 1440px;
+            overflow: hidden;
+            background: #fff;
+          }
+          .cover-title-card { position: absolute; inset: 120px; }
+          .cover-kicker { color: #222; font: 32px sans-serif; }
+          .cover-title { color: #fff; font: 96px/1.2 sans-serif; }
+        </style>
+      </head>
+      <body>
+        <div class="slide slide-cover">
+          <div class="cover-title-card">
+            <div class="cover-kicker">生活分享</div>
+            <div class="cover-title">看不见的标题</div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+    monkeypatch.setattr(
+        qa,
+        "render_article_slides",
+        lambda _manifest_path: ([("01-cover.png", low_contrast_cover)], {}),
+    )
+
+    issues = qa._render_issues(tmp_path / "manifest.json")
+
+    assert any(issue.code == "cover_low_contrast" for issue in issues)
+
+
+def test_cover_render_qa_accepts_short_dark_title_on_light_background(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    qa = _import_qa_module()
+    short_title_cover = """
+    <!doctype html>
+    <html>
+      <head>
+        <style>
+          html, body { margin: 0; }
+          .slide {
+            position: relative;
+            width: 1080px;
+            height: 1440px;
+            overflow: hidden;
+            background: #fff;
+          }
+          .cover-title-card { position: absolute; inset: 120px; }
+          .cover-kicker { color: #222; font: 32px sans-serif; }
+          .cover-title {
+            display: inline-block;
+            color: #222;
+            font: 96px/1.2 sans-serif;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="slide slide-cover">
+          <div class="cover-title-card">
+            <div class="cover-kicker">生活分享</div>
+            <div class="cover-title">一</div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+    monkeypatch.setattr(
+        qa,
+        "render_article_slides",
+        lambda _manifest_path: ([("01-cover.png", short_title_cover)], {}),
+    )
+
+    issues = qa._render_issues(tmp_path / "manifest.json")
+
+    assert not any(issue.code == "cover_low_contrast" for issue in issues)
+
+
+def test_cover_render_qa_checks_text_background_not_region_extremes(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    qa = _import_qa_module()
+    locally_low_contrast_cover = """
+    <!doctype html>
+    <html>
+      <head>
+        <style>
+          html, body { margin: 0; }
+          .slide {
+            position: relative;
+            width: 1080px;
+            height: 1440px;
+            overflow: hidden;
+            background: #fff;
+          }
+          .cover-title-card {
+            position: absolute;
+            inset: 120px;
+            background: linear-gradient(90deg, #000 0 20%, #888 20% 80%, #fff 80%);
+          }
+          .cover-kicker { color: #222; font: 32px sans-serif; }
+          .cover-title {
+            width: 800px;
+            color: #888;
+            font: 96px/1.2 sans-serif;
+            text-align: center;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="slide slide-cover">
+          <div class="cover-title-card">
+            <div class="cover-kicker">生活分享</div>
+            <div class="cover-title">看不见的标题</div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+    monkeypatch.setattr(
+        qa,
+        "render_article_slides",
+        lambda _manifest_path: ([("01-cover.png", locally_low_contrast_cover)], {}),
+    )
+
+    issues = qa._render_issues(tmp_path / "manifest.json")
+
+    assert any(issue.code == "cover_low_contrast" for issue in issues)
 
 
 def test_blank_manifest_defaults_fall_back_to_project_config(tmp_path: Path) -> None:

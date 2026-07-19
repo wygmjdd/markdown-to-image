@@ -93,10 +93,14 @@ def _slide_shell(
     show_page_footer: bool = False,
     slide_height: int = _DEFAULT_SLIDE_HEIGHT,
 ) -> str:
-    slide_class = f"slide {extra_class}".strip()
+    slide_classes = ["slide"]
+    if extra_class:
+        slide_classes.append(extra_class)
     style_attr = ""
     if background_url:
+        slide_classes.append("has-background-image")
         style_attr = f' style="background-image: url(\'{background_url}\');"'
+    slide_class = " ".join(slide_classes)
     footer_html = ""
     if show_page_footer:
         footer_html = f"""

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -30,6 +30,125 @@ from markdown_to_image.config import enrich_manifest_from_article, load_renderer
 _VIEWPORT = {"width": 1080, "height": 1440}
 _MIN_MID_PAGE_FILL = 0.72
 _MIN_TAIL_PAGE_FILL = 0.45
+_MIN_COVER_CONTRAST_RATIO = 3.0
+
+_COVER_LAYOUT_JS = """
+() => {
+  const slide = document.querySelector('.slide-cover');
+  const card = document.querySelector('.cover-title-card');
+  const title = document.querySelector('.cover-title');
+  if (!slide || !card || !title) return null;
+  const slideRect = slide.getBoundingClientRect();
+  const cardRect = card.getBoundingClientRect();
+  const titleRect = title.getBoundingClientRect();
+  const outside = (rect) => (
+    rect.left < slideRect.left - 1 ||
+    rect.top < slideRect.top - 1 ||
+    rect.right > slideRect.right + 1 ||
+    rect.bottom > slideRect.bottom + 1
+  );
+  return {
+    overflow: outside(cardRect) || outside(titleRect),
+    backgroundImage: Boolean(slide.style.backgroundImage),
+    backgroundClass: slide.classList.contains('has-background-image'),
+  };
+}
+"""
+
+_COVER_CONTRAST_JS = r"""
+async ({ backgroundDataUrl, blackDataUrl, whiteDataUrl, foregroundColor, foregroundOpacity }) => {
+  const loadPixels = async (dataUrl) => {
+    const image = new Image();
+    image.src = dataUrl;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+    return {
+      width: image.width,
+      height: image.height,
+      pixels: context.getImageData(0, 0, image.width, image.height).data,
+    };
+  };
+  const [background, black, white] = await Promise.all([
+    loadPixels(backgroundDataUrl),
+    loadPixels(blackDataUrl),
+    loadPixels(whiteDataUrl),
+  ]);
+  if (
+    background.width !== black.width ||
+    background.width !== white.width ||
+    background.height !== black.height ||
+    background.height !== white.height
+  ) return null;
+
+  const colorMatch = String(foregroundColor).match(
+    /rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)/i
+  );
+  if (!colorMatch) return null;
+  const foreground = [
+    Number(colorMatch[1]),
+    Number(colorMatch[2]),
+    Number(colorMatch[3]),
+  ];
+  const foregroundAlpha = Math.max(
+    0,
+    Math.min(1, Number(colorMatch[4] ?? 1) * Number(foregroundOpacity ?? 1))
+  );
+  const channel = (value) => {
+    const normalized = value / 255;
+    return normalized <= 0.04045
+      ? normalized / 12.92
+      : Math.pow((normalized + 0.055) / 1.055, 2.4);
+  };
+  const luminance = (rgb) => (
+    0.2126 * channel(rgb[0]) +
+    0.7152 * channel(rgb[1]) +
+    0.0722 * channel(rgb[2])
+  );
+
+  const ratios = [];
+  for (let index = 0; index < background.pixels.length; index += 4) {
+    const coverage = Math.max(
+      Math.abs(white.pixels[index] - black.pixels[index]),
+      Math.abs(white.pixels[index + 1] - black.pixels[index + 1]),
+      Math.abs(white.pixels[index + 2] - black.pixels[index + 2])
+    ) / 255;
+    if (coverage < 0.5) continue;
+
+    const backgroundRgb = [
+      background.pixels[index],
+      background.pixels[index + 1],
+      background.pixels[index + 2],
+    ];
+    const renderedForeground = foreground.map(
+      (value, channelIndex) => (
+        value * foregroundAlpha + backgroundRgb[channelIndex] * (1 - foregroundAlpha)
+      )
+    );
+    const backgroundLuminance = luminance(backgroundRgb);
+    const foregroundLuminance = luminance(renderedForeground);
+    const light = Math.max(backgroundLuminance, foregroundLuminance);
+    const dark = Math.min(backgroundLuminance, foregroundLuminance);
+    ratios.push((light + 0.05) / (dark + 0.05));
+  }
+  if (!ratios.length) return { ratio: 1, textPixels: 0 };
+
+  ratios.sort((left, right) => left - right);
+  const at = (percentile) => ratios[Math.min(
+    ratios.length - 1,
+    Math.floor((ratios.length - 1) * percentile)
+  )];
+  return {
+    ratio: at(0.1),
+    minimum: ratios[0],
+    median: at(0.5),
+    textPixels: ratios.length,
+  };
+}
+"""
 
 
 @dataclass(frozen=True)
@@ -37,6 +156,73 @@ class QAIssue:
     severity: Literal["error", "warning"]
     code: str
     message: str
+
+
+def _cover_contrast_metrics(page, title) -> dict | None:
+    rect = title.bounding_box()
+    if not isinstance(rect, dict):
+        return None
+
+    viewport = page.viewport_size
+    if not isinstance(viewport, dict):
+        return None
+    x = max(0.0, float(rect["x"]))
+    y = max(0.0, float(rect["y"]))
+    right = min(float(viewport["width"]), float(rect["x"]) + float(rect["width"]))
+    bottom = min(float(viewport["height"]), float(rect["y"]) + float(rect["height"]))
+    if right <= x or bottom <= y:
+        return None
+    clip = {"x": x, "y": y, "width": right - x, "height": bottom - y}
+
+    computed_style = title.evaluate(
+        """element => {
+          const style = getComputedStyle(element);
+          return { color: style.color, opacity: style.opacity };
+        }"""
+    )
+    if not isinstance(computed_style, dict):
+        return None
+    original_style = title.get_attribute("style")
+
+    def screenshot_data_url() -> str:
+        screenshot = page.screenshot(type="png", clip=clip)
+        return "data:image/png;base64," + base64.b64encode(screenshot).decode("ascii")
+
+    page.evaluate("() => document.fonts.ready")
+    try:
+        title.evaluate("element => { element.style.visibility = 'hidden'; }")
+        background_data_url = screenshot_data_url()
+        mask_script = """(element, color) => {
+          element.style.setProperty('visibility', 'visible', 'important');
+          element.style.setProperty('color', color, 'important');
+          element.style.setProperty('-webkit-text-fill-color', color, 'important');
+          element.style.setProperty('text-shadow', 'none', 'important');
+          element.style.setProperty('opacity', '1', 'important');
+        }"""
+        title.evaluate(mask_script, "#000")
+        black_data_url = screenshot_data_url()
+        title.evaluate(mask_script, "#fff")
+        white_data_url = screenshot_data_url()
+    finally:
+        title.evaluate(
+            """(element, styleValue) => {
+              if (styleValue === null) element.removeAttribute('style');
+              else element.setAttribute('style', styleValue);
+            }""",
+            original_style,
+        )
+
+    metrics = page.evaluate(
+        _COVER_CONTRAST_JS,
+        {
+            "backgroundDataUrl": background_data_url,
+            "blackDataUrl": black_data_url,
+            "whiteDataUrl": white_data_url,
+            "foregroundColor": computed_style.get("color"),
+            "foregroundOpacity": computed_style.get("opacity"),
+        },
+    )
+    return metrics if isinstance(metrics, dict) else None
 
 
 def _project_root_from_manifest(manifest: dict) -> Path | None:
@@ -122,12 +308,79 @@ def _render_issues(manifest_path: Path) -> list[QAIssue]:
         for name, html in slides
         if name not in {"01-cover.png"} and not name.endswith("-end.png")
     ]
+    cover_slides = [(name, html) for name, html in slides if name == "01-cover.png"]
 
     try:
         with sync_playwright() as playwright:
             browser = launch_browser(playwright)
             try:
                 page = browser.new_page(viewport=_VIEWPORT)
+                for name, html in cover_slides:
+                    page.set_content(html, wait_until="load")
+                    title = page.locator(".cover-title")
+                    kicker = page.locator(".cover-kicker")
+                    if (
+                        title.count() != 1
+                        or kicker.count() != 1
+                        or not title.inner_text().strip()
+                        or not kicker.inner_text().strip()
+                        or not title.is_visible()
+                        or not kicker.is_visible()
+                    ):
+                        issues.append(
+                            QAIssue(
+                                "error",
+                                "missing_cover_text",
+                                f"{name}: cover title or category label is missing or hidden.",
+                            )
+                        )
+                        continue
+                    cover_metrics = page.evaluate(_COVER_LAYOUT_JS)
+                    if not isinstance(cover_metrics, dict):
+                        issues.append(
+                            QAIssue(
+                                "error",
+                                "missing_cover_layout",
+                                f"{name}: expected cover layout elements were not rendered.",
+                            )
+                        )
+                        continue
+                    if cover_metrics.get("overflow"):
+                        issues.append(
+                            QAIssue(
+                                "error",
+                                "cover_overflow",
+                                f"{name}: cover title card exceeds the slide bounds.",
+                            )
+                        )
+                    if cover_metrics.get("backgroundImage") != cover_metrics.get("backgroundClass"):
+                        issues.append(
+                            QAIssue(
+                                "error",
+                                "cover_background_state",
+                                f"{name}: cover background style and state class disagree.",
+                            )
+                        )
+                    contrast_metrics = _cover_contrast_metrics(page, title)
+                    if not contrast_metrics:
+                        issues.append(
+                            QAIssue(
+                                "error",
+                                "cover_contrast_unavailable",
+                                f"{name}: could not measure cover title contrast.",
+                            )
+                        )
+                    else:
+                        contrast_ratio = float(contrast_metrics.get("ratio") or 0)
+                        if contrast_ratio < _MIN_COVER_CONTRAST_RATIO:
+                            issues.append(
+                                QAIssue(
+                                    "error",
+                                    "cover_low_contrast",
+                                    f"{name}: cover title contrast is {contrast_ratio:.2f}:1 "
+                                    f"(minimum {_MIN_COVER_CONTRAST_RATIO:.1f}:1).",
+                                )
+                            )
                 for slide_index, (name, html) in enumerate(body_slides):
                     page.set_content(html, wait_until="load")
                     is_photo_slide = bool(page.locator(".article-photo-card").count())
