@@ -11,6 +11,8 @@ from markdown_to_image.paginator import (
     _merge_adjacent_blocks,
     block_char_count,
     iter_text_pieces,
+    join_inline_markdown_fragments,
+    rebalance_inline_markup_parts,
     split_code_lines,
     split_clauses,
     split_sentences,
@@ -63,11 +65,15 @@ def _clone(block: ContentBlock, text: str) -> ContentBlock:
 def _join_block_text(left: ContentBlock, right: ContentBlock) -> str:
     if left.kind == "code":
         return f"{left.text.rstrip()}\n{right.text.lstrip()}".strip("\n")
-    return left.text + right.text
+    return join_inline_markdown_fragments(left.text, right.text)
 
 
 def _same_source(left: ContentBlock, right: ContentBlock) -> bool:
-    return left.kind == right.kind and left.source_id == right.source_id
+    return (
+        left.kind == right.kind
+        and left.kind != "table"
+        and left.source_id == right.source_id
+    )
 
 
 def _normalize_sources(blocks: list[ContentBlock]) -> list[ContentBlock]:
@@ -134,11 +140,17 @@ def _split_leading_chars(text: str) -> tuple[str, str] | None:
                 snap_at = max(snap_at, index + 1)
         if snap_at > _MIN_FRAGMENT_CHARS:
             end = snap_at
-    return stripped[:end].strip(), stripped[end:].strip()
+    balanced = rebalance_inline_markup_parts(
+        [stripped[:end].strip(), stripped[end:].strip()]
+    )
+    if len(balanced) != 2:
+        return None
+    moved, remainder = balanced
+    return moved, remainder
 
 
 def _split_first_sentence(block: ContentBlock) -> tuple[ContentBlock, ContentBlock] | None:
-    if block.kind in {"code", "image"}:
+    if block.kind in {"code", "image", "table"}:
         return None
     sentences = split_sentences(block.text)
     if len(sentences) <= 1:
@@ -151,7 +163,7 @@ def _split_first_sentence(block: ContentBlock) -> tuple[ContentBlock, ContentBlo
 
 
 def _split_first_clause(block: ContentBlock) -> tuple[ContentBlock, ContentBlock] | None:
-    if block.kind in {"code", "image"}:
+    if block.kind in {"code", "image", "table"}:
         return None
     clauses = split_clauses(block.text)
     if len(clauses) <= 1:
@@ -164,7 +176,7 @@ def _split_first_clause(block: ContentBlock) -> tuple[ContentBlock, ContentBlock
 
 
 def _split_first_chunk(block: ContentBlock) -> tuple[ContentBlock, ContentBlock] | None:
-    if block.kind in {"code", "image"}:
+    if block.kind in {"code", "image", "table"}:
         return None
     split = _split_leading_chars(block.text)
     if split is None:
@@ -189,6 +201,16 @@ def _leading_splits(block: ContentBlock) -> list[tuple[ContentBlock, ContentBloc
 def _split_unit(block: ContentBlock, max_chars: int) -> list[ContentBlock]:
     if block.kind == "image":
         return [block]
+    if block.kind == "table":
+        lines = block.text.splitlines()
+        if len(lines) <= 3:
+            return [block]
+        header = lines[:2]
+        return [
+            _clone(block, "\n".join([*header, row]))
+            for row in lines[2:]
+            if row.strip()
+        ]
     if block.kind == "code":
         pieces = split_code_lines(block.text, max_chars)
         return [_clone(block, piece) for piece in pieces] if len(pieces) > 1 else [block]
@@ -295,7 +317,7 @@ def _pull_prefix_from_next(
         return None
 
     first = next_page[0]
-    if first.kind in {"code", "image"}:
+    if first.kind in {"code", "image", "table"}:
         return None
     text = first.text
     best: tuple[list[ContentBlock], list[ContentBlock]] | None = None
@@ -304,10 +326,21 @@ def _pull_prefix_from_next(
         end = raw_end
         while end < len(text) and text[end] in _CLOSING_PUNCT:
             end += 1
-        prefix_text = text[:end]
-        if not prefix_text or prefix_text[-1] in _FLOW_END_PUNCT:
+        balanced = rebalance_inline_markup_parts(
+            [text[:end], text[end:]]
+        )
+        prefix_text = balanced[0]
+        remainder_text = balanced[1] if len(balanced) > 1 else ""
+        punctuation_only = (
+            prefix_text
+            and all(char in _FLOW_END_PUNCT + _CLOSING_PUNCT for char in prefix_text)
+            and bool(page)
+            and _same_source(page[-1], first)
+        )
+        if not prefix_text or (
+            prefix_text[-1] in _FLOW_END_PUNCT and not punctuation_only
+        ):
             continue
-        remainder_text = text[end:]
         prefix = _clone(first, prefix_text)
         candidate_current = _page_with_piece(page, prefix)
         if remainder_text:

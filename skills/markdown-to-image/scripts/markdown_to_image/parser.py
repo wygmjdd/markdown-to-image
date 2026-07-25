@@ -21,6 +21,7 @@ _IMAGE_MARKDOWN_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
 _IMAGE_MARKDOWN_BLOCK_RE = re.compile(
     r'^!\[([^\]]*)\]\((\S+?)(?:\s+["\'][^"\']*["\'])?\)$'
 )
+_TABLE_DELIMITER_CELL_RE = re.compile(r"^:?-{3,}:?$")
 _FIGURE_HTML_RE = re.compile(r"<figure\b", re.IGNORECASE)
 _FENCE_CHARS = ("`", "~")
 _CTA_BLOCK_RE = re.compile(
@@ -99,7 +100,7 @@ def strip_trailing_promo_lines(body: str) -> str:
 
 @dataclass(frozen=True)
 class ContentBlock:
-    kind: Literal["paragraph", "quote", "image", "code"]
+    kind: Literal["paragraph", "quote", "image", "code", "table"]
     text: str
     source_id: int = 0
     image_src: str = ""
@@ -238,6 +239,107 @@ def _parse_markdown_image_line(line: str) -> ContentBlock | None:
     return ContentBlock("image", alt, image_src=src.strip(), image_alt=alt)
 
 
+def _split_markdown_table_row(line: str) -> list[str]:
+    """Split a GFM table row without treating escaped or code-span pipes as separators."""
+    stripped = line.strip()
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|") and not stripped.endswith(r"\|"):
+        stripped = stripped[:-1]
+
+    cells: list[str] = []
+    current: list[str] = []
+    in_code = False
+    index = 0
+    while index < len(stripped):
+        char = stripped[index]
+        if char == "\\" and index + 1 < len(stripped) and stripped[index + 1] == "|":
+            current.append("|")
+            index += 2
+            continue
+        if char == "`":
+            in_code = not in_code
+            current.append(char)
+            index += 1
+            continue
+        if char == "|" and not in_code:
+            cells.append("".join(current).strip())
+            current = []
+            index += 1
+            continue
+        current.append(char)
+        index += 1
+    cells.append("".join(current).strip())
+    return cells
+
+
+def _table_alignment(cell: str) -> str | None:
+    normalized = re.sub(r"\s+", "", cell)
+    if not _TABLE_DELIMITER_CELL_RE.fullmatch(normalized):
+        return None
+    if normalized.startswith(":") and normalized.endswith(":"):
+        return "center"
+    if normalized.endswith(":"):
+        return "right"
+    return "left"
+
+
+def parse_markdown_table(
+    text: str,
+) -> tuple[list[str], list[list[str]], list[str]] | None:
+    """Parse a complete GFM-style table into headers, rows, and alignments."""
+    lines = [line for line in text.splitlines() if line.strip()]
+    if len(lines) < 2 or "|" not in lines[0]:
+        return None
+
+    headers = _split_markdown_table_row(lines[0])
+    delimiter_cells = _split_markdown_table_row(lines[1])
+    if not headers or len(delimiter_cells) != len(headers):
+        return None
+
+    alignments: list[str] = []
+    for cell in delimiter_cells:
+        alignment = _table_alignment(cell)
+        if alignment is None:
+            return None
+        alignments.append(alignment)
+
+    rows: list[list[str]] = []
+    for line in lines[2:]:
+        cells = _split_markdown_table_row(line)
+        if len(cells) < len(headers):
+            cells.extend([""] * (len(headers) - len(cells)))
+        rows.append(cells[: len(headers)])
+    return headers, rows, alignments
+
+
+def _is_markdown_table_start(lines: list[str], index: int) -> bool:
+    if index + 1 >= len(lines) or "|" not in lines[index]:
+        return False
+    return parse_markdown_table("\n".join(lines[index : index + 2])) is not None
+
+
+def _parse_markdown_table_block(
+    lines: list[str],
+    index: int,
+) -> tuple[ContentBlock, int] | None:
+    if not _is_markdown_table_start(lines, index):
+        return None
+
+    table_lines = [lines[index], lines[index + 1]]
+    index += 2
+    while index < len(lines):
+        current = lines[index]
+        if not current.strip() or "|" not in current:
+            break
+        cells = _split_markdown_table_row(current)
+        if not cells:
+            break
+        table_lines.append(current)
+        index += 1
+    return ContentBlock("table", "\n".join(table_lines)), index
+
+
 def _parse_code_fence_start(stripped: str) -> tuple[str, int, str] | None:
     if not stripped or stripped[0] not in _FENCE_CHARS:
         return None
@@ -305,6 +407,11 @@ def parse_body_blocks(body: str) -> list[ContentBlock]:
         if not stripped:
             index += 1
             continue
+        markdown_table = _parse_markdown_table_block(lines, index)
+        if markdown_table is not None:
+            table_block, index = markdown_table
+            blocks.append(table_block)
+            continue
         if stripped.startswith(">"):
             quote_lines: list[str] = []
             while index < len(lines):
@@ -371,6 +478,8 @@ def parse_body_blocks(body: str) -> list[ContentBlock]:
             current = lines[index]
             current_stripped = current.strip()
             if not current_stripped:
+                break
+            if _is_markdown_table_start(lines, index):
                 break
             if _starts_special_block(current):
                 break

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from markdown_to_image.parser import ContentBlock
+from markdown_to_image.parser import ContentBlock, parse_markdown_table
 
 SLIDE_HEIGHT = 1440
 SLIDE_PADDING_TOP = 32
@@ -25,6 +25,11 @@ CODE_FONT = 22
 CODE_LINE_HEIGHT = 1.58
 CODE_PADDING_VERTICAL = 44
 CODE_PADDING_HORIZONTAL = 58
+TABLE_FONT = 25
+TABLE_LINE_HEIGHT = 1.5
+TABLE_CELL_PADDING_HORIZONTAL = 10
+TABLE_CELL_PADDING_VERTICAL = 28
+TABLE_FOUR_COLUMN_WIDTHS = (0.18, 0.22, 0.25, 0.35)
 BLOCK_GAP = 28
 DEFAULT_SPLIT_CHARS = 340
 
@@ -69,6 +74,41 @@ def _code_line_count(text: str, font_size: int, content_width: int = CONTENT_WID
     return total
 
 
+def _table_height(block: ContentBlock) -> float:
+    parsed = parse_markdown_table(block.text)
+    if parsed is None:
+        return _line_count(block.text, PARAGRAPH_FONT) * PARAGRAPH_FONT * PARAGRAPH_LINE_HEIGHT
+
+    headers, rows, _alignments = parsed
+    column_count = max(1, len(headers))
+    if column_count == len(TABLE_FOUR_COLUMN_WIDTHS):
+        column_widths = [
+            max(
+                1,
+                int(CONTENT_WIDTH * width) - TABLE_CELL_PADDING_HORIZONTAL,
+            )
+            for width in TABLE_FOUR_COLUMN_WIDTHS
+        ]
+    else:
+        cell_width = max(
+            1,
+            int(CONTENT_WIDTH / column_count) - TABLE_CELL_PADDING_HORIZONTAL,
+        )
+        column_widths = [cell_width] * column_count
+
+    total = 3.0
+    for row in [headers, *rows]:
+        lines = max(
+            _line_count(cell, TABLE_FONT, column_widths[index])
+            for index, cell in enumerate(row)
+        )
+        total += (
+            lines * TABLE_FONT * TABLE_LINE_HEIGHT
+            + TABLE_CELL_PADDING_VERTICAL
+        )
+    return total
+
+
 def estimate_block_height(block: ContentBlock) -> float:
     if block.kind == "quote":
         font_size = QUOTE_FONT
@@ -82,6 +122,8 @@ def estimate_block_height(block: ContentBlock) -> float:
         content_width = CONTENT_WIDTH - CODE_PADDING_HORIZONTAL
         lines = _code_line_count(block.text, font_size, content_width)
         return lines * font_size * line_height + padding
+    elif block.kind == "table":
+        return _table_height(block)
     else:
         font_size = PARAGRAPH_FONT
         line_height = PARAGRAPH_LINE_HEIGHT

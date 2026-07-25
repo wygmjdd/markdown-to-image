@@ -136,6 +136,60 @@ def test_link_stripping_skips_code_blocks() -> None:
     assert blocks[2].text == "echo '[缩进代码链接](https://example.com/keep-too)'"
 
 
+def test_parser_recognizes_markdown_tables_as_blocks() -> None:
+    parser = _import_parser_module()
+
+    blocks = parser.parse_body_blocks(
+        "前文。\n\n"
+        "夺冠年份| 对应赛季| 当时名称| 总决赛对手\n"
+        "---|---|:---:|---:\n"
+        "**1955年**| 1954-55赛季| 锡拉丘兹民族队| 韦恩堡活塞\n"
+        "**1967年**| 1966-67赛季| 费城76人| 旧金山勇士\n\n"
+        "后文。\n"
+    )
+
+    assert [block.kind for block in blocks] == ["paragraph", "table", "paragraph"]
+    parsed = parser.parse_markdown_table(blocks[1].text)
+    assert parsed is not None
+    headers, rows, alignments = parsed
+    assert headers == ["夺冠年份", "对应赛季", "当时名称", "总决赛对手"]
+    assert rows[0][0] == "**1955年**"
+    assert alignments == ["left", "left", "center", "right"]
+
+
+def test_strong_and_table_markup_render_as_html() -> None:
+    parser = _import_parser_module()
+    render = _import_render_module()
+
+    inline_html = render._render_inline_text("这是 **重点**，`**这里不是粗体**`。")
+    assert '<strong class="article-strong">重点</strong>' in inline_html
+    assert '<code class="article-inline-code">**这里不是粗体**</code>' in inline_html
+
+    table = parser.parse_body_blocks(
+        "年份|结果\n"
+        "---|---\n"
+        "**1955年**|冠军\n"
+    )[0]
+    table_html = render._render_block_html(table)
+    assert '<table class="article-table">' in table_html
+    assert '<strong class="article-strong">1955年</strong>' in table_html
+    assert "---|---" not in table_html
+
+
+def test_pagination_rebalances_strong_markup_across_sentence_splits() -> None:
+    paginator = _import_paginator_module()
+    render = _import_render_module()
+
+    pieces = paginator.split_sentences("**第一句。第二句。**")
+
+    assert pieces == ["**第一句。**", "**第二句。**"]
+    joined = paginator.join_inline_markdown_fragments(pieces[0], pieces[1])
+    assert joined == "**第一句。第二句。**"
+    rendered = render._render_inline_text("**第一句。********第二句。**")
+    assert rendered.count('class="article-strong"') == 1
+    assert "**" not in rendered
+
+
 def test_code_pagination_keeps_comment_headers_with_commands() -> None:
     paginator = _import_paginator_module()
 
@@ -455,6 +509,49 @@ def test_cleanup_page_endings_with_browser_pulls_prefix_after_dangling_comma() -
 
     assert len(cleaned) == 1
     assert "".join(block.text for block in cleaned[0]) == "第一页被回填到逗号，后半句应该继续清理。"
+
+
+def test_cleanup_page_endings_with_browser_reattaches_leading_punctuation_before_table() -> None:
+    render = _import_render_module()
+    browser_paginator = _import_browser_paginator_module()
+    table_text = (
+        "年份|赛季|名称|对手\n"
+        "---|---|---|---\n"
+        "**1955年**|1954-55赛季|锡拉丘兹民族队|韦恩堡活塞"
+    )
+    pages = [
+        [render.ContentBlock("paragraph", "从维基百科上看到以下信息", 0)],
+        [
+            render.ContentBlock("paragraph", "：", 0),
+            render.ContentBlock("table", table_text, 1),
+        ],
+    ]
+
+    def render_probe(blocks: list, total: int, page_index: int = 0, all_pages: list | None = None) -> str:
+        pages_snapshot = all_pages if all_pages is not None else [blocks]
+        continues = False
+        if page_index > 0 and pages_snapshot[page_index - 1] and blocks:
+            previous_last = pages_snapshot[page_index - 1][-1]
+            first_block = blocks[0]
+            continues = (
+                previous_last.kind == "paragraph"
+                and first_block.kind == "paragraph"
+                and previous_last.source_id == first_block.source_id
+            )
+        return render._render_body_page(
+            "标点清理测试标题",
+            blocks,
+            1,
+            max(total, 1),
+            "作者",
+            continues_paragraph=continues,
+        )
+
+    cleaned = browser_paginator.cleanup_page_endings_with_browser(pages, render_probe)
+
+    assert len(cleaned) == 2
+    assert cleaned[0][0].text == "从维基百科上看到以下信息："
+    assert cleaned[1][0].kind == "table"
 
 
 def test_missing_required_manifest_fields_fail_fast(tmp_path: Path) -> None:

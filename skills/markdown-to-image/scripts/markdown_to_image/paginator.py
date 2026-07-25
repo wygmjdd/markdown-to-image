@@ -19,10 +19,22 @@ _FLOW_END_PUNCT = "，,、；;：:"
 _CODE_CHAR_WEIGHT = 0.55
 _CODE_SPLIT_OVERAGE = 1.2
 _MIN_CODE_LINE_CHARS = 80
+_STRONG_MARKERS = ("**", "__")
+
+
+def normalize_inline_markdown_boundaries(text: str) -> str:
+    """Collapse adjacent strong close/open markers created by pagination joins."""
+    while "****" in text:
+        text = text.replace("****", "")
+    while "____" in text:
+        text = text.replace("____", "")
+    return text
 
 
 def char_count(text: str) -> int:
-    return len(text.strip())
+    visible = normalize_inline_markdown_boundaries(text)
+    visible = visible.replace("**", "").replace("__", "")
+    return len(visible.strip())
 
 
 def _code_char_count(text: str) -> int:
@@ -33,6 +45,56 @@ def block_char_count(block: ContentBlock) -> int:
     if block.kind == "code":
         return _code_char_count(block.text)
     return char_count(block.text)
+
+
+def _active_strong_marker(text: str, active: str | None = None) -> str | None:
+    """Return the strong marker left open after scanning Markdown inline text."""
+    in_code = False
+    index = 0
+    while index < len(text):
+        if text[index] == "\\":
+            index += 2
+            continue
+        if text[index] == "`":
+            in_code = not in_code
+            index += 1
+            continue
+        if not in_code:
+            if active is not None and text.startswith(active, index):
+                index += len(active)
+                active = None
+                continue
+            if active is None:
+                marker = next(
+                    (candidate for candidate in _STRONG_MARKERS if text.startswith(candidate, index)),
+                    None,
+                )
+                if marker is not None:
+                    active = marker
+                    index += len(marker)
+                    continue
+        index += 1
+    return active
+
+
+def rebalance_inline_markup_parts(parts: list[str]) -> list[str]:
+    """Close and reopen strong spans when pagination splits Markdown text."""
+    normalized: list[str] = []
+    for part in parts:
+        part = normalize_inline_markdown_boundaries(part)
+        if part.strip() in _STRONG_MARKERS and normalized:
+            normalized[-1] += part.strip()
+        else:
+            normalized.append(part)
+
+    active: str | None = None
+    balanced: list[str] = []
+    for raw_part in normalized:
+        prefix = active or ""
+        active = _active_strong_marker(raw_part, active)
+        suffix = active or ""
+        balanced.append(f"{prefix}{raw_part}{suffix}")
+    return balanced
 
 
 def split_sentences(text: str) -> list[str]:
@@ -54,7 +116,7 @@ def split_sentences(text: str) -> list[str]:
             buffer = ""
     if buffer.strip():
         sentences.append(buffer.strip())
-    return sentences
+    return rebalance_inline_markup_parts(sentences)
 
 
 def split_clauses(text: str) -> list[str]:
@@ -79,7 +141,7 @@ def split_clauses(text: str) -> list[str]:
         clauses.append(buffer)
     if len(clauses) <= 1:
         return [stripped]
-    return clauses
+    return rebalance_inline_markup_parts(clauses)
 
 
 def hard_split_text(text: str, max_chars: int) -> list[str]:
@@ -95,7 +157,7 @@ def hard_split_text(text: str, max_chars: int) -> list[str]:
         if chunk:
             parts.append(chunk)
         start += max_chars
-    return parts
+    return rebalance_inline_markup_parts(parts)
 
 
 def _max_code_line_chars(max_chars: int) -> int:
@@ -231,14 +293,28 @@ def _clone_block(block: ContentBlock, text: str) -> ContentBlock:
     return block.with_text(text)
 
 
+def join_inline_markdown_fragments(left: str, right: str) -> str:
+    """Join paginated text without leaving adjacent close/open strong markers."""
+    for marker in _STRONG_MARKERS:
+        if left.endswith(marker) and right.startswith(marker):
+            return normalize_inline_markdown_boundaries(
+                left[: -len(marker)] + right[len(marker) :]
+            )
+    return normalize_inline_markdown_boundaries(left + right)
+
+
 def _join_block_text(left: ContentBlock, right: ContentBlock) -> str:
     if left.kind == "code":
         return f"{left.text.rstrip()}\n{right.text.lstrip()}".strip("\n")
-    return left.text + right.text
+    return join_inline_markdown_fragments(left.text, right.text)
 
 
 def _can_merge_blocks(left: ContentBlock, right: ContentBlock) -> bool:
-    return left.kind == right.kind and left.source_id == right.source_id
+    return (
+        left.kind == right.kind
+        and left.kind != "table"
+        and left.source_id == right.source_id
+    )
 
 
 def continues_same_paragraph(page: list[ContentBlock], next_page: list[ContentBlock]) -> bool:
@@ -256,6 +332,8 @@ def continues_same_paragraph(page: list[ContentBlock], next_page: list[ContentBl
 
 def split_block_to_chunks(block: ContentBlock, max_chars: int) -> list[ContentBlock]:
     if block_char_count(block) <= max_chars:
+        return [block]
+    if block.kind == "table":
         return [block]
     if block.kind == "code":
         return [_clone_block(block, piece) for piece in split_code_lines(block.text, max_chars)]
@@ -294,6 +372,8 @@ def _expand_block_to_flow_pieces(block: ContentBlock, max_chars: int) -> list[Co
         if page_content_height([block]) <= EFFECTIVE_TEXT_HEIGHT and block_char_count(block) <= max_chars:
             return [block]
         return split_block_to_chunks(block, max_chars)
+    if block.kind == "table":
+        return [block]
 
     if page_content_height([block]) <= EFFECTIVE_TEXT_HEIGHT:
         sentences = split_sentences(text)
@@ -385,6 +465,9 @@ def _pull_leading_piece(block: ContentBlock) -> tuple[ContentBlock | None, Conte
     text = block.text.strip()
     if not text:
         return None, None
+
+    if block.kind in {"image", "table"}:
+        return _clone_block(block, text), None
 
     if block.kind == "code":
         pieces = split_code_lines(text, max(80, DEFAULT_SPLIT_CHARS // 2))

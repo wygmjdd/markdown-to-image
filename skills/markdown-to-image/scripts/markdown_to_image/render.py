@@ -21,12 +21,17 @@ from markdown_to_image.config import (
     normalize_platform,
 )
 from markdown_to_image.overflow import correct_body_page_underfills
-from markdown_to_image.paginator import _merge_adjacent_blocks
+from markdown_to_image.paginator import (
+    _merge_adjacent_blocks,
+    join_inline_markdown_fragments,
+    normalize_inline_markdown_boundaries,
+)
 from markdown_to_image.parser import (
     ContentBlock,
     load_manifest,
     merge_manifest_defaults,
     parse_article_file,
+    parse_markdown_table,
     resolve_source_path,
     validate_required_manifest_fields,
 )
@@ -56,7 +61,10 @@ _CATEGORY_ALIASES = {
 }
 
 _CSS_BLOCK_CACHE: str | None = None
-_INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
+_INLINE_MARKUP_RE = re.compile(
+    r"`([^`\n]+)`|(\*\*|__)(?=\S)(.+?)(?<=\S)\2",
+    re.DOTALL,
+)
 
 
 def _social_title(manifest: dict[str, Any]) -> str:
@@ -124,11 +132,19 @@ def _slide_shell(
 
 
 def _render_inline_text(text: str) -> str:
+    text = normalize_inline_markdown_boundaries(text)
     parts: list[str] = []
     cursor = 0
-    for match in _INLINE_CODE_RE.finditer(text):
+    for match in _INLINE_MARKUP_RE.finditer(text):
         parts.append(html.escape(text[cursor : match.start()]))
-        parts.append(f'<code class="article-inline-code">{html.escape(match.group(1))}</code>')
+        if match.group(1) is not None:
+            parts.append(
+                f'<code class="article-inline-code">{html.escape(match.group(1))}</code>'
+            )
+        else:
+            parts.append(
+                f'<strong class="article-strong">{_render_inline_text(match.group(3))}</strong>'
+            )
         cursor = match.end()
     parts.append(html.escape(text[cursor:]))
     return "".join(parts)
@@ -175,6 +191,34 @@ def _render_inline_image_html(
     )
 
 
+def _render_table_html(block: ContentBlock) -> str:
+    parsed = parse_markdown_table(block.text)
+    if parsed is None:
+        return f'<p class="article-p article-p-start">{_render_inline_text(block.text)}</p>'
+
+    headers, rows, alignments = parsed
+    header_html = "".join(
+        f'<th scope="col" class="align-{alignment}">{_render_inline_text(cell)}</th>'
+        for cell, alignment in zip(headers, alignments)
+    )
+    rows_html = []
+    for row in rows:
+        cells_html = "".join(
+            f'<td class="align-{alignment}">{_render_inline_text(cell)}</td>'
+            for cell, alignment in zip(row, alignments)
+        )
+        rows_html.append(f"<tr>{cells_html}</tr>")
+    body_html = f'<tbody>{"".join(rows_html)}</tbody>' if rows_html else ""
+    return (
+        '<div class="article-table-wrap">'
+        '<table class="article-table">'
+        f"<thead><tr>{header_html}</tr></thead>"
+        f"{body_html}"
+        "</table>"
+        "</div>"
+    )
+
+
 def _render_block_html(
     block: ContentBlock,
     *,
@@ -196,6 +240,8 @@ def _render_block_html(
         if source_path is None:
             raise ValueError("Inline article image rendering requires the source article path.")
         return _render_inline_image_html(block, source_path, project_root)
+    if block.kind == "table":
+        return _render_table_html(block)
     paragraph_class = "article-p article-p-start" if paragraph_start else "article-p article-p-continue"
     return f'<p class="{paragraph_class}">{_render_inline_text(block.text)}</p>'
 
@@ -211,7 +257,9 @@ def _collapse_paragraph_blocks(blocks: list) -> list:
             and collapsed[-1].source_id == block.source_id
         ):
             previous = collapsed[-1]
-            collapsed[-1] = previous.with_text(previous.text + block.text)
+            collapsed[-1] = previous.with_text(
+                join_inline_markdown_fragments(previous.text, block.text)
+            )
             continue
         collapsed.append(block)
     return collapsed
@@ -243,6 +291,9 @@ def _render_body_page(
             continue
         if block.kind == "image":
             parts.append(_render_block_html(block, source_path=source_path, project_root=project_root))
+            continue
+        if block.kind == "table":
+            parts.append(_render_block_html(block))
             continue
 
         paragraph_start = True

@@ -51,6 +51,8 @@ def _peel_last_piece(page: list[ContentBlock]) -> ContentBlock | None:
         return None
 
     last = page[-1]
+    if last.kind in {"image", "table"}:
+        return page.pop()
     if last.kind == "code":
         lines = last.text.strip("\n").splitlines()
         if len(lines) > 1:
@@ -165,7 +167,7 @@ def _pull_max_fit_prefix(
         return False
 
     first = next_page[0]
-    if first.kind == "code":
+    if first.kind in {"code", "image", "table"}:
         return False
     text = first.text.strip()
     if not text:
