@@ -10,6 +10,10 @@ python -m playwright install chromium
 
 If the project pins `PLAYWRIGHT_BROWSERS_PATH`, use the same value for install and render.
 
+The renderer intentionally does not fall back to system Chrome. This prevents
+headless rendering failures from opening or crashing the user's regular browser.
+Keep the original Chromium launch error visible and fix that environment instead.
+
 ## Source Article Not Found
 
 Use an absolute `source`, or set `project_root` in the manifest/config when the article path is repo-relative.

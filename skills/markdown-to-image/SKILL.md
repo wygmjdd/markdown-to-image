@@ -25,6 +25,9 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.venv/playwright-browsers" \
   .venv/bin/python -m playwright install chromium
 ```
 
+The renderer intentionally never falls back to system Chrome. If Chromium cannot
+launch, fix its installation or cache path instead of adding `channel="chrome"`.
+
 ## Workflow
 
 1. Confirm the target platform first: `rednote` or `x`.
