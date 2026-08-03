@@ -10,7 +10,7 @@
 - Update Codex only from the pushed remote:
 
 ```bash
-npx skills add -g https://github.com/wygmjdd/markdown-to-image \
+npx skills add -g git@github.com:wygmjdd/markdown-to-image.git \
   --skill markdown-to-image -a codex -y
 ```
 
