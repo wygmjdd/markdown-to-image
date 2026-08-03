@@ -227,7 +227,7 @@ def _render_block_html(
     project_root: Path | None = None,
 ) -> str:
     if block.kind == "quote":
-        return f'<div class="article-quote">{_render_inline_text(block.text)}</div>'
+        return _render_quote_group_html([block])
     if block.kind == "code":
         label_html = _render_code_language_label(block.code_language)
         return (
@@ -244,6 +244,14 @@ def _render_block_html(
         return _render_table_html(block)
     paragraph_class = "article-p article-p-start" if paragraph_start else "article-p article-p-continue"
     return f'<p class="{paragraph_class}">{_render_inline_text(block.text)}</p>'
+
+
+def _render_quote_group_html(blocks: list[ContentBlock]) -> str:
+    paragraphs = "".join(
+        f'<p class="article-quote-p">{_render_inline_text(block.text)}</p>'
+        for block in blocks
+    )
+    return f'<div class="article-quote">{paragraphs}</div>'
 
 
 def _collapse_paragraph_blocks(blocks: list) -> list:
@@ -282,18 +290,37 @@ def _render_body_page(
 ) -> str:
     parts: list[str] = []
     seen_sources: set[int] = set()
-    for index, block in enumerate(_collapse_paragraph_blocks(blocks)):
+    render_blocks = _collapse_paragraph_blocks(blocks)
+    index = 0
+    while index < len(render_blocks):
+        block = render_blocks[index]
         if block.kind == "quote":
-            parts.append(_render_block_html(block))
+            quote_group = [block]
+            while (
+                block.quote_group_id is not None
+                and index + len(quote_group) < len(render_blocks)
+            ):
+                candidate = render_blocks[index + len(quote_group)]
+                if (
+                    candidate.kind != "quote"
+                    or candidate.quote_group_id != block.quote_group_id
+                ):
+                    break
+                quote_group.append(candidate)
+            parts.append(_render_quote_group_html(quote_group))
+            index += len(quote_group)
             continue
         if block.kind == "code":
             parts.append(_render_block_html(block))
+            index += 1
             continue
         if block.kind == "image":
             parts.append(_render_block_html(block, source_path=source_path, project_root=project_root))
+            index += 1
             continue
         if block.kind == "table":
             parts.append(_render_block_html(block))
+            index += 1
             continue
 
         paragraph_start = True
@@ -303,6 +330,7 @@ def _render_body_page(
             paragraph_start = False
         seen_sources.add(block.source_id)
         parts.append(_render_block_html(block, paragraph_start=paragraph_start))
+        index += 1
 
     header_html = f'<div class="frame-header">{html.escape(header)}</div>' if show_frame_header else ""
     title_html = (

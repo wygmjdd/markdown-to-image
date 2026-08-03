@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from markdown_to_image.layout import (
     AVAILABLE_TEXT_HEIGHT,
     DEFAULT_SPLIT_CHARS,
@@ -20,6 +22,7 @@ _CODE_CHAR_WEIGHT = 0.55
 _CODE_SPLIT_OVERAGE = 1.2
 _MIN_CODE_LINE_CHARS = 80
 _STRONG_MARKERS = ("**", "__")
+_QUOTE_PARAGRAPH_RE = re.compile(r"\n[ \t]*\n+")
 
 
 def normalize_inline_markdown_boundaries(text: str) -> str:
@@ -291,6 +294,26 @@ def iter_text_pieces(text: str, max_chars: int) -> list[str]:
 
 def _clone_block(block: ContentBlock, text: str) -> ContentBlock:
     return block.with_text(text)
+
+
+def split_quote_paragraph_blocks(
+    block: ContentBlock,
+    quote_group_id: int,
+) -> list[ContentBlock]:
+    """Split a Markdown quote on blank quote lines while retaining one visual group."""
+    if block.kind != "quote":
+        return [block]
+    paragraphs = [
+        paragraph.strip()
+        for paragraph in _QUOTE_PARAGRAPH_RE.split(block.text.strip())
+        if paragraph.strip()
+    ]
+    if not paragraphs:
+        return []
+    return [
+        block.with_text(paragraph, quote_group_id=quote_group_id)
+        for paragraph in paragraphs
+    ]
 
 
 def join_inline_markdown_fragments(left: str, right: str) -> str:
@@ -709,9 +732,13 @@ def _rebalance_pages(pages: list[list[ContentBlock]]) -> list[list[ContentBlock]
 def paginate_blocks(blocks: list[ContentBlock], max_chars: int = 340) -> list[list[ContentBlock]]:
     """Fill slides book-style: sentence flow, backfill sparse pages from the next."""
     stream: list[ContentBlock] = []
-    for source_id, block in enumerate(blocks):
-        for piece in _expand_block_to_flow_pieces(block, max_chars):
-            stream.append(piece.with_text(piece.text, source_id))
+    next_source_id = 0
+    for quote_group_id, block in enumerate(blocks):
+        for paragraph in split_quote_paragraph_blocks(block, quote_group_id):
+            source_id = next_source_id
+            next_source_id += 1
+            for piece in _expand_block_to_flow_pieces(paragraph, max_chars):
+                stream.append(piece.with_text(piece.text, source_id))
 
     pages: list[list[ContentBlock]] = []
     current_page: list[ContentBlock] = []

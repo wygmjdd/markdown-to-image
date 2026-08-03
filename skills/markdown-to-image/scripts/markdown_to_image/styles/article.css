@@ -262,6 +262,14 @@
   background: var(--quote-rule);
 }
 
+.article-quote-p {
+  margin: 0;
+}
+
+.article-quote-p + .article-quote-p {
+  margin-top: 0.82em;
+}
+
 .article-code-block {
   position: relative;
   margin: 0;

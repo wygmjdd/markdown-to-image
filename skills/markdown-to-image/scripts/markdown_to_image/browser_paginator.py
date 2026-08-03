@@ -15,6 +15,7 @@ from markdown_to_image.paginator import (
     rebalance_inline_markup_parts,
     split_code_lines,
     split_clauses,
+    split_quote_paragraph_blocks,
     split_sentences,
 )
 
@@ -77,11 +78,19 @@ def _same_source(left: ContentBlock, right: ContentBlock) -> bool:
 
 
 def _normalize_sources(blocks: list[ContentBlock]) -> list[ContentBlock]:
-    return [
-        block.with_text(block.text.strip(), index)
-        for index, block in enumerate(blocks)
-        if block.text.strip() or (block.kind == "image" and block.image_src.strip())
-    ]
+    normalized: list[ContentBlock] = []
+    next_source_id = 0
+    for quote_group_id, block in enumerate(blocks):
+        if not block.text.strip() and not (
+            block.kind == "image" and block.image_src.strip()
+        ):
+            continue
+        for paragraph in split_quote_paragraph_blocks(block, quote_group_id):
+            normalized.append(
+                paragraph.with_text(paragraph.text.strip(), next_source_id)
+            )
+            next_source_id += 1
+    return normalized
 
 
 def _page_char_count(page: list[ContentBlock]) -> int:

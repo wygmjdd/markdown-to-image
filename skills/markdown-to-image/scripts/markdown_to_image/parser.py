@@ -106,8 +106,14 @@ class ContentBlock:
     image_src: str = ""
     image_alt: str = ""
     code_language: str = ""
+    quote_group_id: int | None = None
 
-    def with_text(self, text: str, source_id: int | None = None) -> "ContentBlock":
+    def with_text(
+        self,
+        text: str,
+        source_id: int | None = None,
+        quote_group_id: int | None = None,
+    ) -> "ContentBlock":
         return ContentBlock(
             self.kind,
             text,
@@ -115,6 +121,7 @@ class ContentBlock:
             self.image_src,
             self.image_alt,
             self.code_language,
+            self.quote_group_id if quote_group_id is None else quote_group_id,
         )
 
 
