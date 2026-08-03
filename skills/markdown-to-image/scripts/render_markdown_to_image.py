@@ -8,7 +8,7 @@ import re
 import sys
 from pathlib import Path
 
-from markdown_to_image.browser import launch_browser
+from markdown_to_image.browser import fit_cover_title, launch_browser
 from markdown_to_image.qa import audit_article_manifest, format_issues
 from markdown_to_image.render import COVER_BASE_FILENAME, render_article_slides
 
@@ -43,6 +43,7 @@ def screenshot_slides(slides: list[tuple[str, str]], output_dir: Path) -> list[P
             for filename, slide_html in slides:
                 out_path = output_dir / filename
                 page.set_content(slide_html, wait_until="load")
+                fit_cover_title(page)
                 page.screenshot(path=str(out_path), full_page=True, timeout=60_000)
                 written.append(out_path)
         finally:

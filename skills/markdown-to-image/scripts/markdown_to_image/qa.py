@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from markdown_to_image.browser import launch_browser
+from markdown_to_image.browser import fit_cover_title, launch_browser
 from markdown_to_image.render import render_article_slides
 from markdown_to_image.layout import AVAILABLE_TEXT_HEIGHT, page_content_height
 from markdown_to_image.overflow import (
@@ -317,6 +317,7 @@ def _render_issues(manifest_path: Path) -> list[QAIssue]:
                 page = browser.new_page(viewport=_VIEWPORT)
                 for name, html in cover_slides:
                     page.set_content(html, wait_until="load")
+                    title_fit = fit_cover_title(page)
                     title = page.locator(".cover-title")
                     kicker = page.locator(".cover-kicker")
                     if (
@@ -335,6 +336,26 @@ def _render_issues(manifest_path: Path) -> list[QAIssue]:
                             )
                         )
                         continue
+                    if title_fit is None:
+                        issues.append(
+                            QAIssue(
+                                "error",
+                                "cover_title_fit_unavailable",
+                                f"{name}: could not measure the cover title line layout.",
+                            )
+                        )
+                        continue
+                    if (
+                        int(title_fit.get("lineCount") or 0) > 2
+                        and int(title_fit.get("lastLineLength") or 0) <= 3
+                    ):
+                        issues.append(
+                            QAIssue(
+                                "error",
+                                "cover_title_orphan_line",
+                                f"{name}: cover title ends with a short orphan line.",
+                            )
+                        )
                     cover_metrics = page.evaluate(_COVER_LAYOUT_JS)
                     if not isinstance(cover_metrics, dict):
                         issues.append(
