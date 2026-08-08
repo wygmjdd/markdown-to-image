@@ -12,6 +12,7 @@ from markdown_to_image.paginator import (
     _append_flow_piece,
     _page_ends_with_dangling_break,
     _pull_leading_piece,
+    _split_trailing_heading_group,
     continues_same_paragraph,
     split_clauses,
     split_sentences,
@@ -51,7 +52,7 @@ def _peel_last_piece(page: list[ContentBlock]) -> ContentBlock | None:
         return None
 
     last = page[-1]
-    if last.kind in {"image", "table"}:
+    if last.kind in {"heading", "image", "table"}:
         return page.pop()
     if last.kind == "code":
         lines = last.text.strip("\n").splitlines()
@@ -167,7 +168,7 @@ def _pull_max_fit_prefix(
         return False
 
     first = next_page[0]
-    if first.kind in {"code", "image", "table"}:
+    if first.kind in {"code", "heading", "image", "table"}:
         return False
     text = first.text.strip()
     if not text:
@@ -361,15 +362,24 @@ def correct_body_page_overflows(
                     index += 1
                     continue
 
-                moved = _peel_last_piece(corrected[index])
-                if moved is None:
-                    index += 1
-                    continue
+                moved_blocks: list[ContentBlock] = []
+                if corrected[index][-1].kind == "heading":
+                    previous_blocks, headings = _split_trailing_heading_group(corrected[index])
+                    if previous_blocks:
+                        corrected[index] = previous_blocks
+                        moved_blocks = headings
+
+                if not moved_blocks:
+                    moved = _peel_last_piece(corrected[index])
+                    if moved is None:
+                        index += 1
+                        continue
+                    moved_blocks = [moved]
 
                 if index + 1 < len(corrected):
-                    corrected[index + 1].insert(0, moved)
+                    corrected[index + 1][0:0] = moved_blocks
                 else:
-                    corrected.append([moved])
+                    corrected.append(moved_blocks)
 
             browser_page.close()
         finally:

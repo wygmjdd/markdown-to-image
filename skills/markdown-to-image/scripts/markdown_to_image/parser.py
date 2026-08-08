@@ -21,6 +21,8 @@ _IMAGE_MARKDOWN_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
 _IMAGE_MARKDOWN_BLOCK_RE = re.compile(
     r'^!\[([^\]]*)\]\((\S+?)(?:\s+["\'][^"\']*["\'])?\)$'
 )
+_ATX_HEADING_RE = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*)|[ \t]*)$")
+_ATX_CLOSING_SEQUENCE_RE = re.compile(r"[ \t]+#+[ \t]*$")
 _TABLE_DELIMITER_CELL_RE = re.compile(r"^:?-{3,}:?$")
 _FIGURE_HTML_RE = re.compile(r"<figure\b", re.IGNORECASE)
 _FENCE_CHARS = ("`", "~")
@@ -100,13 +102,14 @@ def strip_trailing_promo_lines(body: str) -> str:
 
 @dataclass(frozen=True)
 class ContentBlock:
-    kind: Literal["paragraph", "quote", "image", "code", "table"]
+    kind: Literal["paragraph", "heading", "quote", "image", "code", "table"]
     text: str
     source_id: int = 0
     image_src: str = ""
     image_alt: str = ""
     code_language: str = ""
     quote_group_id: int | None = None
+    heading_level: int = 0
 
     def with_text(
         self,
@@ -122,6 +125,7 @@ class ContentBlock:
             self.image_alt,
             self.code_language,
             self.quote_group_id if quote_group_id is None else quote_group_id,
+            self.heading_level,
         )
 
 
@@ -244,6 +248,15 @@ def _parse_markdown_image_line(line: str) -> ContentBlock | None:
     alt, src = match.groups()
     alt = alt.strip()
     return ContentBlock("image", alt, image_src=src.strip(), image_alt=alt)
+
+
+def _parse_atx_heading_line(line: str) -> ContentBlock | None:
+    match = _ATX_HEADING_RE.fullmatch(line.rstrip())
+    if match is None:
+        return None
+    marker, raw_text = match.groups()
+    text = _ATX_CLOSING_SEQUENCE_RE.sub("", raw_text or "").strip()
+    return ContentBlock("heading", text, heading_level=len(marker))
 
 
 def _split_markdown_table_row(line: str) -> list[str]:
@@ -397,6 +410,7 @@ def _starts_special_block(line: str) -> bool:
     stripped = line.strip()
     return (
         stripped.startswith(">")
+        or _parse_atx_heading_line(line) is not None
         or stripped.lower().startswith("<figure")
         or _parse_markdown_image_line(stripped) is not None
         or _parse_code_fence_start(stripped) is not None
@@ -412,6 +426,12 @@ def parse_body_blocks(body: str) -> list[ContentBlock]:
         line = lines[index]
         stripped = line.strip()
         if not stripped:
+            index += 1
+            continue
+        heading = _parse_atx_heading_line(line)
+        if heading is not None:
+            if heading.text:
+                blocks.append(heading)
             index += 1
             continue
         markdown_table = _parse_markdown_table_block(lines, index)

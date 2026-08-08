@@ -130,6 +130,48 @@
   text-indent: 0;
 }
 
+.article-heading {
+  margin: 0;
+  padding: 0 0 0 20px;
+  border-left: 4px solid var(--accent);
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-weight: 700;
+  line-height: 1.42;
+  color: var(--ink-primary);
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.article-heading-level-1 {
+  font-size: 44px;
+}
+
+.article-heading-level-2 {
+  font-size: 40px;
+}
+
+.article-heading-level-3 {
+  border-left-width: 3px;
+  font-size: 35px;
+  color: var(--ink-body);
+}
+
+.article-heading-level-4 {
+  border-left-width: 3px;
+  font-size: 32px;
+}
+
+.article-heading-level-5 {
+  border-left-width: 2px;
+  font-size: 30px;
+}
+
+.article-heading-level-6 {
+  border-left-width: 2px;
+  font-size: 29px;
+}
+
 .article-inline-code {
   display: inline;
   padding: 0 0.18em;

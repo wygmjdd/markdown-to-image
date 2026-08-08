@@ -17,6 +17,15 @@ CONTENT_WIDTH = 1080 - 36 * 2 - 36 * 2
 
 PARAGRAPH_FONT = 33
 PARAGRAPH_LINE_HEIGHT = 1.86
+HEADING_FONT_BY_LEVEL = {
+    1: 44,
+    2: 40,
+    3: 35,
+    4: 32,
+    5: 30,
+    6: 29,
+}
+HEADING_LINE_HEIGHT = 1.42
 QUOTE_FONT = 29
 QUOTE_LINE_HEIGHT = 1.78
 QUOTE_PADDING_VERTICAL = 24
@@ -110,7 +119,13 @@ def _table_height(block: ContentBlock) -> float:
 
 
 def estimate_block_height(block: ContentBlock) -> float:
-    if block.kind == "quote":
+    if block.kind == "heading":
+        level = min(6, max(1, block.heading_level or 2))
+        font_size = HEADING_FONT_BY_LEVEL[level]
+        line_height = HEADING_LINE_HEIGHT
+        padding = 0.0
+        content_width = CONTENT_WIDTH
+    elif block.kind == "quote":
         font_size = QUOTE_FONT
         line_height = QUOTE_LINE_HEIGHT
         padding = QUOTE_PADDING_VERTICAL

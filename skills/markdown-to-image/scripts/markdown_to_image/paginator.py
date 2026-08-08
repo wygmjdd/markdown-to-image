@@ -45,6 +45,8 @@ def _code_char_count(text: str) -> int:
 
 
 def block_char_count(block: ContentBlock) -> int:
+    if block.kind == "heading":
+        return 0
     if block.kind == "code":
         return _code_char_count(block.text)
     return char_count(block.text)
@@ -335,9 +337,18 @@ def _join_block_text(left: ContentBlock, right: ContentBlock) -> str:
 def _can_merge_blocks(left: ContentBlock, right: ContentBlock) -> bool:
     return (
         left.kind == right.kind
-        and left.kind != "table"
+        and left.kind not in {"heading", "table"}
         and left.source_id == right.source_id
     )
+
+
+def _split_trailing_heading_group(
+    blocks: list[ContentBlock],
+) -> tuple[list[ContentBlock], list[ContentBlock]]:
+    split_at = len(blocks)
+    while split_at > 0 and blocks[split_at - 1].kind == "heading":
+        split_at -= 1
+    return blocks[:split_at], blocks[split_at:]
 
 
 def continues_same_paragraph(page: list[ContentBlock], next_page: list[ContentBlock]) -> bool:
@@ -356,7 +367,7 @@ def continues_same_paragraph(page: list[ContentBlock], next_page: list[ContentBl
 def split_block_to_chunks(block: ContentBlock, max_chars: int) -> list[ContentBlock]:
     if block_char_count(block) <= max_chars:
         return [block]
-    if block.kind == "table":
+    if block.kind in {"heading", "table"}:
         return [block]
     if block.kind == "code":
         return [_clone_block(block, piece) for piece in split_code_lines(block.text, max_chars)]
@@ -391,6 +402,8 @@ def _expand_block_to_flow_pieces(block: ContentBlock, max_chars: int) -> list[Co
     if not text:
         return []
 
+    if block.kind == "heading":
+        return [block]
     if block.kind == "code":
         if page_content_height([block]) <= EFFECTIVE_TEXT_HEIGHT and block_char_count(block) <= max_chars:
             return [block]
@@ -491,6 +504,9 @@ def _pull_leading_piece(block: ContentBlock) -> tuple[ContentBlock | None, Conte
 
     if block.kind in {"image", "table"}:
         return _clone_block(block, text), None
+
+    if block.kind == "heading":
+        return None, None
 
     if block.kind == "code":
         pieces = split_code_lines(text, max(80, DEFAULT_SPLIT_CHARS // 2))
@@ -745,6 +761,21 @@ def paginate_blocks(blocks: list[ContentBlock], max_chars: int = 340) -> list[li
 
     for piece in stream:
         if current_page and not _can_append_flow_piece(current_page, piece):
+            if current_page[-1].kind == "heading" and len(current_page) > 1:
+                previous_blocks, headings = _split_trailing_heading_group(current_page)
+                if previous_blocks:
+                    pages.append(_merge_adjacent_blocks(previous_blocks))
+                    current_page = headings
+                else:
+                    pages.append(_merge_adjacent_blocks(current_page))
+                    current_page = []
+                if _can_append_flow_piece(current_page, piece):
+                    _append_flow_piece(current_page, piece)
+                    continue
+                if current_page:
+                    pages.append(current_page)
+                current_page = [piece]
+                continue
             pages.append(_merge_adjacent_blocks(current_page))
             current_page = [piece]
             continue

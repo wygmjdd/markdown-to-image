@@ -9,6 +9,7 @@ from markdown_to_image.browser import launch_browser
 from markdown_to_image.parser import ContentBlock
 from markdown_to_image.paginator import (
     _merge_adjacent_blocks,
+    _split_trailing_heading_group,
     block_char_count,
     iter_text_pieces,
     join_inline_markdown_fragments,
@@ -72,7 +73,7 @@ def _join_block_text(left: ContentBlock, right: ContentBlock) -> str:
 def _same_source(left: ContentBlock, right: ContentBlock) -> bool:
     return (
         left.kind == right.kind
-        and left.kind != "table"
+        and left.kind not in {"heading", "table"}
         and left.source_id == right.source_id
     )
 
@@ -159,7 +160,7 @@ def _split_leading_chars(text: str) -> tuple[str, str] | None:
 
 
 def _split_first_sentence(block: ContentBlock) -> tuple[ContentBlock, ContentBlock] | None:
-    if block.kind in {"code", "image", "table"}:
+    if block.kind in {"code", "heading", "image", "table"}:
         return None
     sentences = split_sentences(block.text)
     if len(sentences) <= 1:
@@ -172,7 +173,7 @@ def _split_first_sentence(block: ContentBlock) -> tuple[ContentBlock, ContentBlo
 
 
 def _split_first_clause(block: ContentBlock) -> tuple[ContentBlock, ContentBlock] | None:
-    if block.kind in {"code", "image", "table"}:
+    if block.kind in {"code", "heading", "image", "table"}:
         return None
     clauses = split_clauses(block.text)
     if len(clauses) <= 1:
@@ -185,7 +186,7 @@ def _split_first_clause(block: ContentBlock) -> tuple[ContentBlock, ContentBlock
 
 
 def _split_first_chunk(block: ContentBlock) -> tuple[ContentBlock, ContentBlock] | None:
-    if block.kind in {"code", "image", "table"}:
+    if block.kind in {"code", "heading", "image", "table"}:
         return None
     split = _split_leading_chars(block.text)
     if split is None:
@@ -208,7 +209,7 @@ def _leading_splits(block: ContentBlock) -> list[tuple[ContentBlock, ContentBloc
 
 
 def _split_unit(block: ContentBlock, max_chars: int) -> list[ContentBlock]:
-    if block.kind == "image":
+    if block.kind in {"heading", "image"}:
         return [block]
     if block.kind == "table":
         lines = block.text.splitlines()
@@ -326,7 +327,7 @@ def _pull_prefix_from_next(
         return None
 
     first = next_page[0]
-    if first.kind in {"code", "image", "table"}:
+    if first.kind in {"code", "heading", "image", "table"}:
         return None
     text = first.text
     best: tuple[list[ContentBlock], list[ContentBlock]] | None = None
@@ -545,6 +546,17 @@ def paginate_blocks_with_browser(
                     if leading is not None:
                         current, remainder = leading
                         queue.insert(0, remainder)
+                        continue
+
+                    if current[-1].kind == "heading" and len(current) > 1:
+                        previous_blocks, headings = _split_trailing_heading_group(current)
+                        if previous_blocks:
+                            pages.append(_merge_adjacent_blocks(previous_blocks))
+                            current = headings
+                        else:
+                            pages.append(_merge_adjacent_blocks(current))
+                            current = []
+                        queue.insert(0, unit)
                         continue
 
                     pages.append(_merge_adjacent_blocks(current))

@@ -226,6 +226,13 @@ def _render_block_html(
     source_path: Path | None = None,
     project_root: Path | None = None,
 ) -> str:
+    if block.kind == "heading":
+        level = min(6, max(1, block.heading_level or 2))
+        return (
+            f'<h{level} class="article-heading article-heading-level-{level}">'
+            f'{_render_inline_text(block.text)}'
+            f'</h{level}>'
+        )
     if block.kind == "quote":
         return _render_quote_group_html([block])
     if block.kind == "code":
@@ -309,6 +316,10 @@ def _render_body_page(
                 quote_group.append(candidate)
             parts.append(_render_quote_group_html(quote_group))
             index += len(quote_group)
+            continue
+        if block.kind == "heading":
+            parts.append(_render_block_html(block))
+            index += 1
             continue
         if block.kind == "code":
             parts.append(_render_block_html(block))
