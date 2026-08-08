@@ -26,10 +26,11 @@ HEADING_FONT_BY_LEVEL = {
     6: 29,
 }
 HEADING_LINE_HEIGHT = 1.42
-QUOTE_FONT = 29
-QUOTE_LINE_HEIGHT = 1.78
-QUOTE_PADDING_VERTICAL = 24
-QUOTE_PADDING_HORIZONTAL = 42
+QUOTE_FONT = PARAGRAPH_FONT
+QUOTE_LINE_HEIGHT = PARAGRAPH_LINE_HEIGHT
+QUOTE_PADDING_VERTICAL = 0
+QUOTE_PADDING_HORIZONTAL = 30
+QUOTE_PARAGRAPH_GAP = QUOTE_FONT * 0.5
 CODE_FONT = 22
 CODE_LINE_HEIGHT = 1.58
 CODE_PADDING_VERTICAL = 44
@@ -156,7 +157,14 @@ def page_content_height(blocks: list[ContentBlock]) -> float:
     total = 0.0
     for index, block in enumerate(blocks):
         if index > 0:
-            total += BLOCK_GAP
+            previous = blocks[index - 1]
+            same_quote_group = (
+                block.kind == "quote"
+                and previous.kind == "quote"
+                and block.quote_group_id is not None
+                and block.quote_group_id == previous.quote_group_id
+            )
+            total += QUOTE_PARAGRAPH_GAP if same_quote_group else BLOCK_GAP
         total += estimate_block_height(block)
     return total
 

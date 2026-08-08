@@ -11,12 +11,12 @@ from markdown_to_image.paginator import (
     _merge_adjacent_blocks,
     _split_trailing_heading_group,
     block_char_count,
+    expand_quote_paragraph_blocks,
     iter_text_pieces,
     join_inline_markdown_fragments,
     rebalance_inline_markup_parts,
     split_code_lines,
     split_clauses,
-    split_quote_paragraph_blocks,
     split_sentences,
 )
 
@@ -81,21 +81,21 @@ def _same_source(left: ContentBlock, right: ContentBlock) -> bool:
 def _normalize_sources(blocks: list[ContentBlock]) -> list[ContentBlock]:
     normalized: list[ContentBlock] = []
     next_source_id = 0
-    for quote_group_id, block in enumerate(blocks):
+    for block in expand_quote_paragraph_blocks(blocks):
         if not block.text.strip() and not (
             block.kind == "image" and block.image_src.strip()
         ):
             continue
-        for paragraph in split_quote_paragraph_blocks(block, quote_group_id):
-            normalized.append(
-                paragraph.with_text(paragraph.text.strip(), next_source_id)
-            )
-            next_source_id += 1
+        normalized.append(block.with_text(block.text.strip(), next_source_id))
+        next_source_id += 1
     return normalized
 
 
 def _page_char_count(page: list[ContentBlock]) -> int:
-    return sum(block_char_count(block) for block in _merge_adjacent_blocks(page))
+    return sum(
+        0 if block.kind == "quote" else block_char_count(block)
+        for block in _merge_adjacent_blocks(page)
+    )
 
 
 def _within_char_limit(page: list[ContentBlock], max_chars: int) -> bool:

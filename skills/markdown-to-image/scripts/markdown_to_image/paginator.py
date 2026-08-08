@@ -318,6 +318,23 @@ def split_quote_paragraph_blocks(
     ]
 
 
+def expand_quote_paragraph_blocks(blocks: list[ContentBlock]) -> list[ContentBlock]:
+    """Split quote paragraphs while grouping adjacent Markdown quote blocks."""
+    expanded: list[ContentBlock] = []
+    quote_group_id = -1
+    previous_was_quote = False
+    for block in blocks:
+        if block.kind == "quote":
+            if not previous_was_quote:
+                quote_group_id += 1
+            expanded.extend(split_quote_paragraph_blocks(block, quote_group_id))
+            previous_was_quote = True
+            continue
+        expanded.append(block)
+        previous_was_quote = False
+    return expanded
+
+
 def join_inline_markdown_fragments(left: str, right: str) -> str:
     """Join paginated text without leaving adjacent close/open strong markers."""
     for marker in _STRONG_MARKERS:
@@ -749,12 +766,11 @@ def paginate_blocks(blocks: list[ContentBlock], max_chars: int = 340) -> list[li
     """Fill slides book-style: sentence flow, backfill sparse pages from the next."""
     stream: list[ContentBlock] = []
     next_source_id = 0
-    for quote_group_id, block in enumerate(blocks):
-        for paragraph in split_quote_paragraph_blocks(block, quote_group_id):
-            source_id = next_source_id
-            next_source_id += 1
-            for piece in _expand_block_to_flow_pieces(paragraph, max_chars):
-                stream.append(piece.with_text(piece.text, source_id))
+    for block in expand_quote_paragraph_blocks(blocks):
+        source_id = next_source_id
+        next_source_id += 1
+        for piece in _expand_block_to_flow_pieces(block, max_chars):
+            stream.append(piece.with_text(piece.text, source_id))
 
     pages: list[list[ContentBlock]] = []
     current_page: list[ContentBlock] = []

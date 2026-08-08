@@ -278,17 +278,15 @@
 
 .article-quote {
   position: relative;
-  padding: 12px 12px 12px 30px;
+  padding: 0 0 0 30px;
   margin: 0;
-  background: var(--quote-surface);
-  border: 1px solid rgba(166, 90, 58, 0.12);
-  border-left: 0;
-  border-radius: 14px;
-  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
-  font-size: 29px;
-  line-height: 1.78;
-  color: var(--quote-ink);
-  letter-spacing: 0.01em;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 33px;
+  line-height: 1.86;
+  color: var(--ink-body);
+  letter-spacing: 0.015em;
   white-space: pre-wrap;
   -webkit-font-smoothing: antialiased;
 }
@@ -296,9 +294,9 @@
 .article-quote::before {
   content: "";
   position: absolute;
-  left: 14px;
-  top: 16px;
-  bottom: 16px;
+  left: 10px;
+  top: 6px;
+  bottom: 6px;
   width: 3px;
   border-radius: 999px;
   background: var(--quote-rule);
@@ -309,7 +307,7 @@
 }
 
 .article-quote-p + .article-quote-p {
-  margin-top: 0.82em;
+  margin-top: 0.5em;
 }
 
 .article-code-block {
